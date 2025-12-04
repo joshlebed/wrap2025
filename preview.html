@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iMessage Wrapped 2025</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📱</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+:root {
+    --bg: #0a0a12;
+    --text: #f0f0f0;
+    --muted: #8892a0;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --cyan: #22d3ee;
+    --pink: #f472b6;
+    --orange: #fb923c;
+    --purple: #a78bfa;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; overflow:hidden; }
+body { font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(--text); }
+
+.gallery { display:flex; height:100%; transition:transform 0.4s cubic-bezier(0.4,0,0.2,1); }
+
+.slide {
+    min-width:100vw; height:100vh;
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    padding:40px 32px 80px; text-align:center; background:var(--bg);
+}
+
+.slide.intro { background:linear-gradient(145deg,#12121f 0%,#1a1a2e 50%,#0f2847 100%); }
+.slide.pink-bg { background:linear-gradient(145deg,#12121f 0%,#2d1a3d 100%); }
+.slide.purple-bg { background:linear-gradient(145deg,#12121f 0%,#1f1a3d 100%); }
+.slide.orange-bg { background:linear-gradient(145deg,#12121f 0%,#2d1f1a 100%); }
+.slide.red-bg { background:linear-gradient(145deg,#12121f 0%,#2d1a1a 100%); }
+.slide.summary-slide { background:linear-gradient(145deg,#0f2847 0%,#12121f 50%,#1a1a2e 100%); }
+
+.slide h1 { font-family:'Silkscreen',cursive; font-size:56px; line-height:1.15; margin:20px 0; letter-spacing:1px; }
+.slide-label { font-family:'Silkscreen',cursive; font-size:14px; color:var(--green); text-transform:uppercase; letter-spacing:3px; margin-bottom:16px; }
+.slide-icon { font-size:80px; margin-bottom:16px; }
+.slide-text { font-size:20px; color:var(--muted); margin:8px 0; }
+.subtitle { font-size:18px; color:var(--muted); margin-top:8px; }
+
+.big-number { font-family:'Silkscreen',cursive; font-size:96px; line-height:1; font-weight:700; }
+.pct { font-family:'Space Grotesk',sans-serif; font-size:64px; }
+.huge-name { font-family:'Silkscreen',cursive; font-size:42px; line-height:1.25; word-break:break-word; max-width:90%; margin:16px 0; }
+.personality-type { font-family:'Silkscreen',cursive; font-size:36px; line-height:1.25; color:var(--purple); margin:24px 0; }
+.roast { font-style:italic; color:var(--muted); font-size:18px; margin-top:16px; max-width:400px; }
+
+.green { color:var(--green); }
+.yellow { color:var(--yellow); }
+.red { color:var(--red); }
+.cyan { color:var(--cyan); }
+.pink { color:var(--pink); }
+.orange { color:var(--orange); }
+.purple { color:var(--purple); }
+
+.stat-grid { display:flex; gap:40px; margin-top:28px; }
+.stat-item { display:flex; flex-direction:column; align-items:center; }
+.stat-num { font-family:'Silkscreen',cursive; font-size:28px; color:var(--cyan); }
+.stat-lbl { font-size:14px; color:var(--muted); margin-top:6px; text-transform:uppercase; letter-spacing:1px; }
+
+.rank-list { width:100%; max-width:420px; margin-top:20px; }
+.rank-item { display:flex; align-items:center; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.1); gap:16px; }
+.rank-num { font-family:'Silkscreen',cursive; font-size:24px; color:var(--green); width:36px; text-align:center; }
+.rank-name { flex:1; font-size:18px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rank-count { font-family:'Silkscreen',cursive; font-size:18px; color:var(--yellow); }
+
+.badge { display:inline-block; padding:10px 24px; border-radius:24px; font-family:'Silkscreen',cursive; font-size:14px; margin-top:20px; border:2px solid; }
+.badge.green { border-color:var(--green); color:var(--green); background:rgba(74,222,128,0.1); }
+.badge.yellow { border-color:var(--yellow); color:var(--yellow); background:rgba(251,191,36,0.1); }
+.badge.red { border-color:var(--red); color:var(--red); background:rgba(248,113,113,0.1); }
+
+.emoji-row { font-size:64px; letter-spacing:20px; margin:28px 0; }
+
+.tap-hint { position:absolute; bottom:60px; font-size:16px; color:var(--muted); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+.summary-card {
+    background:linear-gradient(145deg,#1a1a2e 0%,#0f1a2e 100%);
+    border:2px solid rgba(255,255,255,0.1);
+    border-radius:24px; padding:32px;
+    width:100%; max-width:420px; text-align:center;
+}
+.summary-header { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.1); }
+.summary-logo { font-size:28px; }
+.summary-title { font-family:'Silkscreen',cursive; font-size:16px; letter-spacing:2px; color:var(--text); }
+.summary-hero { margin:24px 0; }
+.summary-big-stat { display:flex; flex-direction:column; align-items:center; }
+.summary-big-num { font-family:'Silkscreen',cursive; font-size:64px; color:var(--green); line-height:1; }
+.summary-big-label { font-size:16px; color:var(--muted); text-transform:uppercase; letter-spacing:2px; margin-top:8px; }
+.summary-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:24px 0; padding:20px 0; border-top:1px solid rgba(255,255,255,0.1); border-bottom:1px solid rgba(255,255,255,0.1); }
+.summary-stat { display:flex; flex-direction:column; align-items:center; }
+.summary-stat-val { font-family:'Silkscreen',cursive; font-size:20px; color:var(--cyan); }
+.summary-stat-lbl { font-size:11px; color:var(--muted); text-transform:uppercase; margin-top:4px; }
+.summary-personality { margin:20px 0; }
+.summary-personality-type { font-family:'Silkscreen',cursive; font-size:22px; color:var(--purple); }
+.summary-top3 { margin:16px 0; display:flex; flex-direction:column; gap:6px; }
+.summary-top3-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.summary-top3-names { font-size:16px; color:var(--text); }
+.summary-footer { margin-top:20px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.1); font-size:14px; color:var(--green); font-family:'Silkscreen',cursive; letter-spacing:1px; }
+
+.screenshot-btn {
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    font-family:'Silkscreen',cursive; font-size:16px;
+    background:var(--green); color:#000; border:none;
+    padding:16px 32px; border-radius:12px; margin-top:28px;
+    cursor:pointer; transition:transform 0.2s,background 0.2s;
+}
+.screenshot-btn:hover { background:#6ee7b7; transform:scale(1.02); }
+.screenshot-btn:active { transform:scale(0.98); }
+.btn-icon { font-size:20px; }
+.share-hint { font-size:14px; color:var(--muted); margin-top:16px; }
+
+.progress { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); display:flex; gap:8px; z-index:100; }
+.dot { width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,0.2); transition:all 0.3s; cursor:pointer; }
+.dot:hover { background:rgba(255,255,255,0.4); }
+.dot.active { background:var(--green); transform:scale(1.3); }
+
+.nav { position:fixed; top:50%; transform:translateY(-50%); font-size:36px; color:rgba(255,255,255,0.2); cursor:pointer; z-index:100; padding:24px; transition:color 0.2s; user-select:none; }
+.nav:hover { color:rgba(255,255,255,0.5); }
+.nav.prev { left:8px; }
+.nav.next { right:8px; }
+.nav.hidden { opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div class="gallery" id="gallery">
+    <!-- 1: Intro -->
+    <div class="slide intro">
+        <div class="slide-icon">📱</div>
+        <h1>iMESSAGE<br>WRAPPED</h1>
+        <p class="subtitle">your 2025 texting habits, exposed</p>
+        <div class="tap-hint">click anywhere to start →</div>
+    </div>
+
+    <!-- 2: Total -->
+    <div class="slide">
+        <div class="slide-label">// TOTAL DAMAGE</div>
+        <div class="big-number green">47,832</div>
+        <div class="slide-text">messages this year</div>
+        <div class="stat-grid">
+            <div class="stat-item"><span class="stat-num">131</span><span class="stat-lbl">/day</span></div>
+            <div class="stat-item"><span class="stat-num">24,891</span><span class="stat-lbl">sent</span></div>
+            <div class="stat-item"><span class="stat-num">22,941</span><span class="stat-lbl">received</span></div>
+        </div>
+    </div>
+
+    <!-- 3: Words -->
+    <div class="slide">
+        <div class="slide-label">// WORD COUNT</div>
+        <div class="big-number cyan">892K</div>
+        <div class="slide-text">words you typed</div>
+        <div class="roast">that's about 3,568 pages of a novel</div>
+    </div>
+
+    <!-- 4: #1 -->
+    <div class="slide pink-bg">
+        <div class="slide-label">// YOUR #1</div>
+        <div class="slide-text">most texted person</div>
+        <div class="huge-name pink">Alex Chen</div>
+        <div class="big-number yellow">11,247</div>
+        <div class="slide-text">messages</div>
+    </div>
+
+    <!-- 5: Top 5 -->
+    <div class="slide">
+        <div class="slide-label">// INNER CIRCLE</div>
+        <div class="slide-text">your top 5</div>
+        <div class="rank-list">
+            <div class="rank-item"><span class="rank-num">1</span><span class="rank-name">Alex Chen</span><span class="rank-count">11,247</span></div>
+            <div class="rank-item"><span class="rank-num">2</span><span class="rank-name">Jordan Lee</span><span class="rank-count">7,823</span></div>
+            <div class="rank-item"><span class="rank-num">3</span><span class="rank-name">Sam Martinez</span><span class="rank-count">4,291</span></div>
+            <div class="rank-item"><span class="rank-num">4</span><span class="rank-name">Riley Kim</span><span class="rank-count">3,847</span></div>
+            <div class="rank-item"><span class="rank-num">5</span><span class="rank-name">Casey Patel</span><span class="rank-count">2,156</span></div>
+        </div>
+    </div>
+
+    <!-- 6: Personality -->
+    <div class="slide purple-bg">
+        <div class="slide-label">// DIAGNOSIS</div>
+        <div class="slide-text">texting personality</div>
+        <div class="personality-type">NOCTURNAL MENACE</div>
+        <div class="roast">"terrorizes people at ungodly hours"</div>
+    </div>
+
+    <!-- 7: Conversation Starter -->
+    <div class="slide">
+        <div class="slide-label">// WHO TEXTS FIRST</div>
+        <div class="slide-text">conversation initiator</div>
+        <div class="big-number green">62<span class="pct">%</span></div>
+        <div class="slide-text">of convos started by you</div>
+        <div class="badge green">YOU START</div>
+    </div>
+
+    <!-- 8: Busiest Day -->
+    <div class="slide">
+        <div class="slide-label">// BUSIEST DAY</div>
+        <div class="slide-text">your most unhinged day</div>
+        <div class="big-number orange">Mar 15</div>
+        <div class="slide-text"><span class="yellow">523</span> messages in one day</div>
+        <div class="roast">what happened??</div>
+    </div>
+
+    <!-- 9: 3AM -->
+    <div class="slide">
+        <div class="slide-label">// 3AM BESTIE</div>
+        <div class="slide-icon">🌙</div>
+        <div class="huge-name cyan">Jordan Lee</div>
+        <div class="big-number yellow">147</div>
+        <div class="slide-text">late night texts</div>
+    </div>
+
+    <!-- 10: Peak -->
+    <div class="slide">
+        <div class="slide-label">// PEAK HOURS</div>
+        <div class="slide-text">most active</div>
+        <div class="big-number green">10PM</div>
+        <div class="slide-text">on <span class="yellow">Thursdays</span></div>
+    </div>
+
+    <!-- 11: Heating Up -->
+    <div class="slide orange-bg">
+        <div class="slide-label">// HEATING UP</div>
+        <div class="slide-text">getting stronger in H2</div>
+        <div class="rank-list">
+            <div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">Chris Wang</span><span class="rank-count green">+423</span></div>
+            <div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">Maya Johnson</span><span class="rank-count green">+287</span></div>
+            <div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">Priya Sharma</span><span class="rank-count green">+156</span></div>
+            <div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">Jake Miller</span><span class="rank-count green">+98</span></div>
+            <div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">Emma Davis</span><span class="rank-count green">+72</span></div>
+        </div>
+    </div>
+
+    <!-- 12: Biggest Fan -->
+    <div class="slide">
+        <div class="slide-label">// BIGGEST FAN</div>
+        <div class="slide-text">texts you most</div>
+        <div class="huge-name orange">Taylor Swift</div>
+        <div class="slide-text"><span class="big-number yellow" style="font-size:56px">2.8x</span> more than you</div>
+    </div>
+
+    <!-- 13: Down Bad -->
+    <div class="slide red-bg">
+        <div class="slide-label">// DOWN BAD</div>
+        <div class="slide-text">you simp for</div>
+        <div class="huge-name">Morgan Davis</div>
+        <div class="slide-text">you text <span class="big-number yellow" style="font-size:56px">3.2x</span> more</div>
+    </div>
+
+    <!-- 14: Ghosted -->
+    <div class="slide">
+        <div class="slide-label">// GHOSTED</div>
+        <div class="slide-text">they chose peace</div>
+        <div class="rank-list">
+            <div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">Drew Thompson</span><span class="rank-count"><span class="green">203</span>→<span class="red">0</span></span></div>
+            <div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">Zack Miller</span><span class="rank-count"><span class="green">87</span>→<span class="red">2</span></span></div>
+            <div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">Lisa Park</span><span class="rank-count"><span class="green">64</span>→<span class="red">1</span></span></div>
+            <div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">Kevin Wu</span><span class="rank-count"><span class="green">52</span>→<span class="red">0</span></span></div>
+            <div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">Sarah Jones</span><span class="rank-count"><span class="green">41</span>→<span class="red">1</span></span></div>
+        </div>
+        <div class="roast">before June → after</div>
+    </div>
+
+    <!-- 15: Response -->
+    <div class="slide">
+        <div class="slide-label">// RESPONSE TIME</div>
+        <div class="slide-text">avg reply</div>
+        <div class="big-number yellow">23</div>
+        <div class="slide-text">minutes</div>
+        <div class="badge yellow">NORMAL</div>
+    </div>
+
+    <!-- 16: Emojis -->
+    <div class="slide">
+        <div class="slide-label">// EMOJIS</div>
+        <div class="slide-text">your emotional range</div>
+        <div class="emoji-row">😂  ❤️  🔥  💀  😭</div>
+    </div>
+
+    <!-- 17: Summary -->
+    <div class="slide summary-slide">
+        <div class="summary-card" id="summaryCard">
+            <div class="summary-header">
+                <span class="summary-logo">📱</span>
+                <span class="summary-title">iMESSAGE WRAPPED 2025</span>
+            </div>
+            <div class="summary-hero">
+                <div class="summary-big-stat">
+                    <span class="summary-big-num">47,832</span>
+                    <span class="summary-big-label">messages</span>
+                </div>
+            </div>
+            <div class="summary-stats">
+                <div class="summary-stat">
+                    <span class="summary-stat-val">312</span>
+                    <span class="summary-stat-lbl">people</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="summary-stat-val">892K</span>
+                    <span class="summary-stat-lbl">words</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="summary-stat-val">62%</span>
+                    <span class="summary-stat-lbl">starter</span>
+                </div>
+                <div class="summary-stat">
+                    <span class="summary-stat-val">23m</span>
+                    <span class="summary-stat-lbl">response</span>
+                </div>
+            </div>
+            <div class="summary-personality">
+                <span class="summary-personality-type">NOCTURNAL MENACE</span>
+            </div>
+            <div class="summary-top3">
+                <span class="summary-top3-label">TOP 3:</span>
+                <span class="summary-top3-names">Alex Chen, Jordan Lee, Sam Martinez</span>
+            </div>
+            <div class="summary-footer">
+                <span>wrap2025.com</span>
+            </div>
+        </div>
+        <button class="screenshot-btn" onclick="takeScreenshot()">
+            <span class="btn-icon">📸</span>
+            <span>Save Screenshot</span>
+        </button>
+        <div class="share-hint">share your damage</div>
+    </div>
+</div>
+
+<div class="progress" id="progress"></div>
+<div class="nav prev" id="prev">‹</div>
+<div class="nav next" id="next">›</div>
+
+<script>
+const gallery = document.getElementById('gallery');
+const progressEl = document.getElementById('progress');
+const prevBtn = document.getElementById('prev');
+const nextBtn = document.getElementById('next');
+const total = 17;
+let current = 0;
+
+for (let i = 0; i < total; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => goTo(i);
+    progressEl.appendChild(dot);
+}
+const dots = progressEl.querySelectorAll('.dot');
+
+function goTo(idx) {
+    if (idx < 0 || idx >= total) return;
+    current = idx;
+    gallery.style.transform = `translateX(-${current * 100}vw)`;
+    dots.forEach((d, i) => d.classList.toggle('active', i === current));
+    prevBtn.classList.toggle('hidden', current === 0);
+    nextBtn.classList.toggle('hidden', current === total - 1);
+}
+
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.nav, button, .dot')) return;
+    const x = e.clientX / window.innerWidth;
+    if (x < 0.3) goTo(current - 1);
+    else goTo(current + 1);
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goTo(current + 1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(current - 1); }
+});
+
+prevBtn.onclick = (e) => { e.stopPropagation(); goTo(current - 1); };
+nextBtn.onclick = (e) => { e.stopPropagation(); goTo(current + 1); };
+
+async function takeScreenshot() {
+    const card = document.getElementById('summaryCard');
+    const btn = document.querySelector('.screenshot-btn');
+    btn.innerHTML = '<span>Saving...</span>';
+    btn.disabled = true;
+    try {
+        const canvas = await html2canvas(card, { backgroundColor:'#0f1a2e', scale:2, logging:false, useCORS:true });
+        const link = document.createElement('a');
+        link.download = 'imessage_wrapped_2025.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.innerHTML = '<span class="btn-icon">✓</span><span>Saved!</span>';
+        setTimeout(() => { btn.innerHTML = '<span class="btn-icon">📸</span><span>Save Screenshot</span>'; btn.disabled = false; }, 2000);
+    } catch (err) {
+        btn.innerHTML = '<span class="btn-icon">📸</span><span>Save Screenshot</span>';
+        btn.disabled = false;
+    }
+}
+
+goTo(0);
+</script>
+</body></html>
