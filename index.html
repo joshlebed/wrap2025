@@ -319,16 +319,16 @@ body {
 }
 
 /* Show share by default, hide download - reversed for mobile-first */
-.share-btn { display: inline-flex; }
-.download-btn { display: none; }
-.mobile-note { display: block; margin-top: 16px; font-size: 14px; color: var(--muted); }
+.share-btn { display: inline-flex !important; }
+.download-btn { display: none !important; }
+.mobile-note { display: block !important; margin-top: 16px; font-size: 14px; color: var(--muted); }
 .theme-toggle .label { display: none; }
 
 /* Only show download button on desktop with mouse (non-touch devices) */
 @media (hover: hover) and (pointer: fine) and (min-width: 1025px) {
-    .share-btn { display: none; }
-    .download-btn { display: inline-flex; }
-    .mobile-note { display: none; }
+    .share-btn { display: none !important; }
+    .download-btn { display: inline-flex !important; }
+    .mobile-note { display: none !important; }
     .theme-toggle .label { display: inline; }
 }
 
