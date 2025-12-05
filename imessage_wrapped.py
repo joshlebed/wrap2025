@@ -18,7 +18,13 @@ TS_JUN_2024 = 1717200000
 def normalize_phone(phone):
     if not phone: return None
     digits = re.sub(r'\D', '', str(phone))
-    if len(digits) == 11 and digits.startswith('1'): digits = digits[1:]
+    # Handle common international prefixes
+    if len(digits) == 11 and digits.startswith('1'):
+        digits = digits[1:]  # US/Canada +1
+    elif len(digits) > 10:
+        # For international numbers, store full digits for exact matching
+        # but also try common formats
+        return digits
     return digits[-10:] if len(digits) >= 10 else (digits if len(digits) >= 7 else None)
 
 def extract_contacts():
@@ -35,8 +41,17 @@ def extract_contacts():
                 if name: people[row[0]] = name
             for owner, phone in conn.execute("SELECT ZOWNER, ZFULLNUMBER FROM ZABCDPHONENUMBER WHERE ZFULLNUMBER IS NOT NULL"):
                 if owner in people:
-                    norm = normalize_phone(phone)
-                    if norm: contacts[norm] = people[owner]
+                    name = people[owner]
+                    digits = re.sub(r'\D', '', str(phone))
+                    # Store multiple formats for better matching
+                    if digits:
+                        contacts[digits] = name  # Full international
+                        if len(digits) >= 10:
+                            contacts[digits[-10:]] = name  # Last 10
+                        if len(digits) >= 7:
+                            contacts[digits[-7:]] = name  # Last 7 (local)
+                        if len(digits) == 11 and digits.startswith('1'):
+                            contacts[digits[1:]] = name  # Without US prefix
             for owner, email in conn.execute("SELECT ZOWNER, ZADDRESS FROM ZABCDEMAILADDRESS WHERE ZADDRESS IS NOT NULL"):
                 if owner in people: contacts[email.lower().strip()] = people[owner]
             conn.close()
@@ -44,9 +59,24 @@ def extract_contacts():
     return contacts
 
 def get_name(handle, contacts):
-    lookup = handle.lower().strip() if '@' in handle else normalize_phone(handle)
-    if lookup and lookup in contacts: return contacts[lookup]
-    return handle.split('@')[0] if '@' in handle else handle
+    if '@' in handle:
+        lookup = handle.lower().strip()
+        if lookup in contacts: return contacts[lookup]
+        return handle.split('@')[0]
+    # Try multiple phone formats for matching
+    digits = re.sub(r'\D', '', str(handle))
+    # Try full digits first (international)
+    if digits in contacts: return contacts[digits]
+    # Try without leading 1 (US/Canada)
+    if len(digits) == 11 and digits.startswith('1'):
+        if digits[1:] in contacts: return contacts[digits[1:]]
+    # Try last 10 digits
+    if len(digits) >= 10 and digits[-10:] in contacts:
+        return contacts[digits[-10:]]
+    # Try last 7 digits (local)
+    if len(digits) >= 7 and digits[-7:] in contacts:
+        return contacts[digits[-7:]]
+    return handle
 
 def check_access():
     if not os.path.exists(IMESSAGE_DB):
@@ -85,7 +115,17 @@ def analyze(ts_start, ts_jun):
     d['fan'] = q(f"SELECT h.id, SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) t, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) y FROM message m JOIN handle h ON m.handle_id=h.ROWID WHERE (m.date/1000000000+978307200)>{ts_start} GROUP BY h.id HAVING t>y*2 AND (t+y)>100 ORDER BY (t*1.0/NULLIF(y,0)) DESC LIMIT 5")
     d['simp'] = q(f"SELECT h.id, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) y, SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) t FROM message m JOIN handle h ON m.handle_id=h.ROWID WHERE (m.date/1000000000+978307200)>{ts_start} GROUP BY h.id HAVING y>t*2 AND (t+y)>100 ORDER BY (y*1.0/NULLIF(t,0)) DESC LIMIT 5")
     
-    r = q(f"WITH g AS (SELECT (date/1000000000+978307200) ts, is_from_me, LAG(date/1000000000+978307200) OVER (ORDER BY date) pt, LAG(is_from_me) OVER (ORDER BY date) pf FROM message WHERE (date/1000000000+978307200)>{ts_start}) SELECT AVG(ts-pt)/60.0 FROM g WHERE is_from_me=1 AND pf=0 AND (ts-pt)<86400 AND (ts-pt)>10")
+    # Response time: partition by handle_id so we measure per-conversation
+    r = q(f"""
+        WITH g AS (
+            SELECT (date/1000000000+978307200) ts, is_from_me, handle_id,
+                   LAG(date/1000000000+978307200) OVER (PARTITION BY handle_id ORDER BY date) pt,
+                   LAG(is_from_me) OVER (PARTITION BY handle_id ORDER BY date) pf
+            FROM message WHERE (date/1000000000+978307200)>{ts_start}
+        )
+        SELECT AVG(ts-pt)/60.0 FROM g
+        WHERE is_from_me=1 AND pf=0 AND (ts-pt)<86400 AND (ts-pt)>10
+    """)
     d['resp'] = int(r[0][0] or 30)
     
     emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
@@ -95,8 +135,22 @@ def analyze(ts_start, ts_jun):
         counts[e] = r[0][0]
     d['emoji'] = sorted(counts.items(), key=lambda x:-x[1])[:5]
     
-    # NEW: Total words sent
-    r = q(f"SELECT SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', '')) + 1) FROM message WHERE (date/1000000000+978307200)>{ts_start} AND is_from_me=1 AND text IS NOT NULL AND text != ''")
+    # Total words sent (excluding reactions and empty messages)
+    r = q(f"""
+        SELECT SUM(
+            LENGTH(TRIM(text)) - LENGTH(REPLACE(TRIM(text), ' ', '')) + 1
+        ) FROM message
+        WHERE (date/1000000000+978307200)>{ts_start}
+        AND is_from_me=1
+        AND text IS NOT NULL
+        AND TRIM(text) != ''
+        AND text NOT LIKE 'Loved "%'
+        AND text NOT LIKE 'Liked "%'
+        AND text NOT LIKE 'Disliked "%'
+        AND text NOT LIKE 'Laughed at "%'
+        AND text NOT LIKE 'Emphasized "%'
+        AND text NOT LIKE 'Questioned "%'
+    """)
     d['words'] = r[0][0] or 0
     
     # NEW: Busiest day
