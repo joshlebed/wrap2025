@@ -1490,6 +1490,38 @@ async function downloadScript(skipScroll = false) {
 }
 
 // Copy script for AI review
+// Helper to copy text with fallback methods
+async function copyToClipboard(text) {
+    // Try modern clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (e) {
+            console.log('Clipboard API failed, trying fallback:', e);
+        }
+    }
+
+    // Fallback: execCommand with textarea
+    try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (success) return true;
+    } catch (e) {
+        console.log('execCommand fallback failed:', e);
+    }
+
+    return false;
+}
+
 async function copyScriptForReview() {
     const btn = document.querySelector('.verify-btn');
     const btnText = btn.querySelector('.verify-btn-text');
@@ -1506,15 +1538,14 @@ async function copyScriptForReview() {
             if (!response.ok) throw new Error('Failed to fetch');
             scriptContent = await response.text();
         } catch (fetchErr) {
-            // Fetch failed - open GitHub directly as fallback
+            // Fetch failed - show clickable link as fallback
             console.error('Fetch error:', fetchErr);
-            window.open('https://github.com/kothari-nikunj/wrap2025/blob/main/imessage_wrapped.py', '_blank');
-            btnText.textContent = 'Opened in GitHub';
+            btnText.innerHTML = '<a href="https://github.com/kothari-nikunj/wrap2025/blob/main/imessage_wrapped.py" target="_blank" style="color: inherit; text-decoration: underline;">Click to view on GitHub</a>';
             btnIcon.textContent = '🔗';
             setTimeout(() => {
                 btnText.textContent = originalText;
                 btnIcon.textContent = '📋';
-            }, 3000);
+            }, 5000);
             return;
         }
 
@@ -1528,30 +1559,26 @@ Here is the script:
 
 ${scriptContent}`;
 
-        try {
-            await navigator.clipboard.writeText(reviewPrompt);
-        } catch (clipboardErr) {
-            // Clipboard failed - open GitHub directly as fallback
-            console.error('Clipboard error:', clipboardErr);
-            window.open('https://github.com/kothari-nikunj/wrap2025/blob/main/imessage_wrapped.py', '_blank');
-            btnText.textContent = 'Opened in GitHub';
+        const copied = await copyToClipboard(reviewPrompt);
+
+        if (copied) {
+            btn.classList.add('copied');
+            btnText.textContent = 'Copied! Paste in ChatGPT/Claude';
+            btnIcon.textContent = '✅';
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btnText.textContent = originalText;
+                btnIcon.textContent = '📋';
+            }, 4000);
+        } else {
+            // Both clipboard methods failed - show clickable link as last resort
+            btnText.innerHTML = '<a href="https://github.com/kothari-nikunj/wrap2025/blob/main/imessage_wrapped.py" target="_blank" style="color: inherit; text-decoration: underline;">Click to view on GitHub</a>';
             btnIcon.textContent = '🔗';
             setTimeout(() => {
                 btnText.textContent = originalText;
                 btnIcon.textContent = '📋';
-            }, 3000);
-            return;
+            }, 5000);
         }
-
-        btn.classList.add('copied');
-        btnText.textContent = 'Copied! Paste in ChatGPT/Claude';
-        btnIcon.textContent = '✅';
-
-        setTimeout(() => {
-            btn.classList.remove('copied');
-            btnText.textContent = originalText;
-            btnIcon.textContent = '📋';
-        }, 4000);
     } catch (err) {
         console.error('Copy error:', err);
         btnText.textContent = 'Failed - try again';
