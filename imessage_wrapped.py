@@ -131,21 +131,23 @@ def analyze(ts_start, ts_jun):
     """)[0]
     d['stats'] = (raw_stats[0] or 0, raw_stats[1] or 0, raw_stats[2] or 0, raw_stats[3] or 0)
 
-    # Top contacts (1:1 only)
+    # Top contacts (1:1 only, excluding 5-6 digit shortcodes like 12345, 123456)
     d['top'] = q(f"""{one_on_one_cte}
         SELECT h.id, COUNT(*) t, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END), SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END)
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
         GROUP BY h.id ORDER BY t DESC LIMIT 20
     """)
 
-    # Late night texters (1:1 only)
+    # Late night texters (1:1 only, excluding shortcodes)
     d['late'] = q(f"""{one_on_one_cte}
         SELECT h.id, COUNT(*) n FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND CAST(strftime('%H',datetime((m.date/1000000000+978307200),'unixepoch','localtime')) AS INT)<5
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
         GROUP BY h.id HAVING n>5 ORDER BY n DESC LIMIT 5
     """)
     
@@ -155,39 +157,43 @@ def analyze(ts_start, ts_jun):
     r = q(f"SELECT CAST(strftime('%w',datetime((date/1000000000+978307200),'unixepoch','localtime')) AS INT) d, COUNT(*) FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY 2 DESC LIMIT 1")
     d['day'] = days[r[0][0]] if r else '???'
     
-    # Ghosted (1:1 only)
+    # Ghosted (1:1 only, excluding shortcodes)
     d['ghosted'] = q(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN m.is_from_me=0 AND (m.date/1000000000+978307200)<{ts_jun} THEN 1 ELSE 0 END) b, SUM(CASE WHEN m.is_from_me=0 AND (m.date/1000000000+978307200)>={ts_jun} THEN 1 ELSE 0 END) a
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start-31536000}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
         GROUP BY h.id HAVING b>10 AND a<3 ORDER BY b DESC LIMIT 5
     """)
 
-    # Heating up (1:1 only)
+    # Heating up (1:1 only, excluding shortcodes)
     d['heating'] = q(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN (m.date/1000000000+978307200)<{ts_jun} THEN 1 ELSE 0 END) h1, SUM(CASE WHEN (m.date/1000000000+978307200)>={ts_jun} THEN 1 ELSE 0 END) h2
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
         GROUP BY h.id HAVING h1>20 AND h2>h1*1.5 ORDER BY (h2-h1) DESC LIMIT 5
     """)
 
-    # Biggest fan (1:1 only)
+    # Biggest fan (1:1 only, excluding shortcodes)
     d['fan'] = q(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) t, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) y
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
         GROUP BY h.id HAVING t>y*2 AND (t+y)>100 ORDER BY (t*1.0/NULLIF(y,0)) DESC LIMIT 5
     """)
 
-    # Simp (1:1 only)
+    # Simp (1:1 only, excluding shortcodes)
     d['simp'] = q(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) y, SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) t
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
         GROUP BY h.id HAVING y>t*2 AND (t+y)>100 ORDER BY (y*1.0/NULLIF(t,0)) DESC LIMIT 5
     """)
     
@@ -225,23 +231,30 @@ def analyze(ts_start, ts_jun):
         counts[e] = r[0][0]
     d['emoji'] = sorted(counts.items(), key=lambda x:-x[1])[:5]
     
-    # Total words sent (excluding reactions and empty messages)
+    # Total words sent (excluding reactions, empty messages, and attachments-only)
+    # Simple approach: count messages with text as minimum, then add extra for spaces
+    # This ensures we get at least 1 word per text message
     r = q(f"""
-        SELECT SUM(
-            LENGTH(TRIM(text)) - LENGTH(REPLACE(TRIM(text), ' ', '')) + 1
-        ) FROM message
+        SELECT
+            COUNT(*) as msg_count,
+            COALESCE(SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', ''))), 0) as extra_words
+        FROM message
         WHERE (date/1000000000+978307200)>{ts_start}
         AND is_from_me=1
         AND text IS NOT NULL
-        AND TRIM(text) != ''
+        AND LENGTH(text) > 0
         AND text NOT LIKE 'Loved "%'
         AND text NOT LIKE 'Liked "%'
         AND text NOT LIKE 'Disliked "%'
         AND text NOT LIKE 'Laughed at "%'
         AND text NOT LIKE 'Emphasized "%'
         AND text NOT LIKE 'Questioned "%'
+        AND text NOT LIKE '%￼%'
     """)
-    d['words'] = r[0][0] or 0
+    # Words = number of messages with text + number of spaces (each space = 1 extra word)
+    msg_count = r[0][0] or 0
+    extra_words = r[0][1] or 0
+    d['words'] = msg_count + extra_words
     
     # NEW: Busiest day
     r = q(f"SELECT DATE(datetime((date/1000000000+978307200),'unixepoch','localtime')) d, COUNT(*) c FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY c DESC LIMIT 1")
