@@ -589,7 +589,34 @@ body { font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(-
         <div class="emoji-row">😂  ❤️  🔥  💀  😭</div>
     </div>
 
-    <!-- 17: Summary -->
+    <!-- 17: Group Chats Overview -->
+    <div class="slide">
+        <div class="slide-label">// GROUP CHATS</div>
+        <div class="slide-icon">👥</div>
+        <div class="big-number green">6</div>
+        <div class="slide-text">active group chats</div>
+        <div class="stat-grid">
+            <div class="stat-item"><span class="stat-num">3,847</span><span class="stat-lbl">total msgs</span></div>
+            <div class="stat-item"><span class="stat-num">2,156</span><span class="stat-lbl">sent</span></div>
+            <div class="stat-item"><span class="stat-num">56%</span><span class="stat-lbl">yours</span></div>
+        </div>
+        <div class="badge green">CONTRIBUTOR</div>
+    </div>
+
+    <!-- 18: Top Group Chats -->
+    <div class="slide orange-bg">
+        <div class="slide-label">// TOP GROUP CHATS</div>
+        <div class="slide-text">your most active groups</div>
+        <div class="rank-list">
+            <div class="rank-item"><span class="rank-num">1</span><span class="rank-name">The Squad</span><span class="rank-count">1,247</span></div>
+            <div class="rank-item"><span class="rank-num">2</span><span class="rank-name">Work Fam</span><span class="rank-count">892</span></div>
+            <div class="rank-item"><span class="rank-num">3</span><span class="rank-name">Book Club</span><span class="rank-count">634</span></div>
+            <div class="rank-item"><span class="rank-num">4</span><span class="rank-name">Family Chat</span><span class="rank-count">521</span></div>
+            <div class="rank-item"><span class="rank-num">5</span><span class="rank-name">Gym Bros</span><span class="rank-count">387</span></div>
+        </div>
+    </div>
+
+    <!-- 19: Summary -->
     <div class="slide summary-slide">
         <div class="summary-card" id="summaryCard">
             <div class="summary-header">
@@ -656,7 +683,7 @@ const gallery = document.getElementById('gallery');
 const progressEl = document.getElementById('progress');
 const prevBtn = document.getElementById('prev');
 const nextBtn = document.getElementById('next');
-const total = 17;
+const total = 19;
 let current = 0;
 
 for (let i = 0; i < total; i++) {
