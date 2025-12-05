@@ -182,13 +182,15 @@ def gen_html(d, contacts, path):
     </div>''')
     
     # Slide 3: Words sent
-    words_k = d['words'] // 1000
+    words = d['words']
+    words_display = f"{words // 1000:,}K" if words >= 1000 else f"{words:,}"
+    pages = max(1, words // 250)  # At least 1 page
     slides.append(f'''
     <div class="slide">
         <div class="slide-label">// WORD COUNT</div>
-        <div class="big-number cyan">{words_k:,}K</div>
+        <div class="big-number cyan">{words_display}</div>
         <div class="slide-text">words you typed</div>
-        <div class="roast">that's about {d['words']//250:,} pages of a novel</div>
+        <div class="roast">that's about {pages:,} pages of a novel</div>
     </div>''')
     
     # Slide 4: Your #1
@@ -351,7 +353,7 @@ def gen_html(d, contacts, path):
                     <span class="summary-stat-lbl">people</span>
                 </div>
                 <div class="summary-stat">
-                    <span class="summary-stat-val">{words_k:,}K</span>
+                    <span class="summary-stat-val">{words_display}</span>
                     <span class="summary-stat-lbl">words</span>
                 </div>
                 <div class="summary-stat">
