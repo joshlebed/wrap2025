@@ -774,7 +774,8 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .tap-hint {{ position:absolute; bottom:60px; font-size:16px; color:var(--muted); animation:pulse 2s infinite; }}
 @keyframes pulse {{ 0%,100%{{opacity:0.4}} 50%{{opacity:1}} }}
 
-/* Animations */
+/* === SLIDE ANIMATIONS === */
+/* Elements start hidden, animate when slide is active */
 .slide .slide-label,
 .slide .slide-text,
 .slide .slide-icon,
@@ -784,47 +785,298 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide .roast,
 .slide .badge,
 .slide .stat-grid,
-.slide .rank-list,
+.slide .rank-item,
 .slide .emoji-row,
 .slide h1,
-.slide .subtitle {{
+.slide .subtitle,
+.slide .summary-card {{
     opacity: 0;
     transform: translateY(20px);
 }}
 
-.slide.active .slide-label {{ animation: fadeSlideUp 0.5s ease-out forwards; }}
-.slide.active .slide-icon {{ animation: popIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards; }}
-.slide.active h1 {{ animation: fadeSlideUp 0.6s ease-out 0.15s forwards; }}
-.slide.active .subtitle {{ animation: fadeSlideUp 0.5s ease-out 0.3s forwards; }}
-.slide.active .slide-text {{ animation: fadeSlideUp 0.4s ease-out 0.2s forwards; }}
-.slide.active .big-number {{ animation: countReveal 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards; }}
-.slide.active .huge-name {{ animation: nameReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.35s forwards; }}
-.slide.active .personality-type {{ animation: glitchReveal 0.8s ease-out 0.3s forwards; }}
-.slide.active .roast {{ animation: fadeSlideUp 0.5s ease-out 0.6s forwards; }}
-.slide.active .badge {{ animation: badgePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.7s forwards; }}
-.slide.active .stat-grid {{ animation: fadeSlideUp 0.5s ease-out 0.5s forwards; }}
-.slide.active .rank-list {{ animation: fadeIn 0.3s ease-out 0.3s forwards; }}
-.slide.active .rank-item {{ opacity: 0; animation: rankCascade 0.4s ease-out forwards; }}
-.slide.active .rank-item:nth-child(1) {{ animation-delay: 0.35s; }}
-.slide.active .rank-item:nth-child(2) {{ animation-delay: 0.45s; }}
-.slide.active .rank-item:nth-child(3) {{ animation-delay: 0.55s; }}
-.slide.active .rank-item:nth-child(4) {{ animation-delay: 0.65s; }}
-.slide.active .rank-item:nth-child(5) {{ animation-delay: 0.75s; }}
-.slide.active .emoji-row {{ animation: emojiWave 0.8s ease-out 0.3s forwards; }}
-.slide.active .summary-card {{ animation: cardReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards; }}
-.slide.active .screenshot-btn {{ opacity: 0; animation: fadeSlideUp 0.5s ease-out 0.8s forwards; }}
-.slide.active .share-hint {{ opacity: 0; animation: fadeSlideUp 0.4s ease-out 1s forwards; }}
+/* Gallery transition */
+.gallery {{ transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }}
 
-@keyframes fadeSlideUp {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-@keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
-@keyframes popIn {{ 0% {{ opacity: 0; transform: translateY(20px) scale(0.8); }} 70% {{ transform: translateY(-5px) scale(1.1); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
-@keyframes countReveal {{ 0% {{ opacity: 0; transform: translateY(30px) scale(0.9); }} 60% {{ transform: translateY(-8px) scale(1.02); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
-@keyframes nameReveal {{ 0% {{ opacity: 0; transform: translateY(40px); }} 100% {{ opacity: 1; transform: translateY(0); }} }}
-@keyframes glitchReveal {{ 0% {{ opacity: 0; transform: translateY(20px); filter: blur(8px); }} 20% {{ opacity: 0.5; transform: translateY(10px) skewX(-5deg); filter: blur(4px); }} 40% {{ opacity: 0.7; transform: translateY(5px) skewX(3deg); filter: blur(2px); }} 60% {{ opacity: 0.9; transform: translateY(-2px) skewX(-1deg); filter: blur(0); }} 80% {{ transform: translateY(1px) skewX(0.5deg); }} 100% {{ opacity: 1; transform: translateY(0) skewX(0); }} }}
-@keyframes badgePop {{ 0% {{ opacity: 0; transform: translateY(10px) scale(0.8); }} 70% {{ transform: translateY(-3px) scale(1.1); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
-@keyframes rankCascade {{ 0% {{ opacity: 0; transform: translateX(-30px); }} 100% {{ opacity: 1; transform: translateX(0); }} }}
-@keyframes emojiWave {{ 0% {{ opacity: 0; transform: translateY(30px) scale(0.8); }} 50% {{ transform: translateY(-5px) scale(1.05); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
-@keyframes cardReveal {{ 0% {{ opacity: 0; transform: translateY(40px) scale(0.95); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
+/* === DEFAULT ANIMATIONS === */
+.slide.active .slide-label {{ animation: labelSlide 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }}
+.slide.active .slide-text {{ animation: textFade 0.4s ease-out 0.12s forwards; }}
+.slide.active .slide-icon {{ animation: iconPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.08s forwards; }}
+.slide.active h1 {{ animation: titleReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards; }}
+.slide.active .subtitle {{ animation: textFade 0.4s ease-out 0.3s forwards; }}
+.slide.active .big-number {{ animation: numberPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s forwards; }}
+.slide.active .huge-name {{ animation: namePop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards; }}
+.slide.active .personality-type {{ animation: glitchReveal 0.9s ease-out 0.2s forwards; }}
+.slide.active .roast {{ animation: roastFade 0.5s ease-out 0.45s forwards; }}
+.slide.active .badge {{ animation: badgePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s forwards; }}
+.slide.active .stat-grid {{ animation: none; opacity: 1; transform: none; }}
+.slide.active .stat-item {{ animation: statPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }}
+.slide.active .stat-item:nth-child(1) {{ animation-delay: 0.35s; }}
+.slide.active .stat-item:nth-child(2) {{ animation-delay: 0.42s; }}
+.slide.active .stat-item:nth-child(3) {{ animation-delay: 0.49s; }}
+.slide.active .rank-list {{ animation: none; opacity: 1; transform: none; }}
+.slide.active .rank-item {{ animation: rankSlide 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards; }}
+.slide.active .rank-item:first-child {{ animation: topRankReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; }}
+.slide.active .rank-item:nth-child(1) {{ animation-delay: 0.12s; }}
+.slide.active .rank-item:nth-child(2) {{ animation-delay: 0.22s; }}
+.slide.active .rank-item:nth-child(3) {{ animation-delay: 0.32s; }}
+.slide.active .rank-item:nth-child(4) {{ animation-delay: 0.42s; }}
+.slide.active .rank-item:nth-child(5) {{ animation-delay: 0.52s; }}
+.slide.active .emoji-row {{ animation: emojiReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards; }}
+.slide.active .summary-card {{ animation: cardReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards; }}
+.slide.active .screenshot-btn {{ opacity: 0; animation: buttonSlide 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.6s forwards; }}
+.slide.active .share-hint {{ opacity: 0; animation: hintFade 0.4s ease-out 0.8s forwards; }}
+
+/* === INTRO SLIDE - Dramatic entrance === */
+.slide.intro.active .slide-icon {{ animation: introIconSpin 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }}
+.slide.intro.active h1 {{ animation: introTitleGlitch 0.7s ease-out 0.35s forwards; }}
+.slide.intro.active .subtitle {{ animation: subtitleFade 0.5s ease-out 0.6s forwards; }}
+
+/* === WHATSAPP SLIDE (#1 person) - Heartbeat === */
+.slide.whatsapp-bg.active .slide-label {{ animation: labelGlow 0.5s ease-out forwards; }}
+.slide.whatsapp-bg.active .huge-name {{ animation: heartbeatName 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s forwards; }}
+.slide.whatsapp-bg.active .big-number {{ animation: loveNumber 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards; }}
+
+/* === PURPLE SLIDE (Personality) - Glitch chaos === */
+.slide.purple-bg.active .slide-label {{ animation: labelGlitch 0.6s ease-out forwards; }}
+.slide.purple-bg.active .personality-type {{ animation: personalityGlitch 1s ease-out 0.15s forwards; }}
+.slide.purple-bg.active .roast {{ animation: flickerReveal 0.7s ease-out 0.55s forwards; }}
+
+/* === RED SLIDE (Down Bad) - Dramatic === */
+.slide.red-bg.active .slide-label {{ animation: labelPulse 0.5s ease-out forwards; }}
+.slide.red-bg.active .huge-name {{ animation: dramaticDrop 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards; }}
+.slide.red-bg.active .big-number {{ animation: desperateNumber 0.6s ease-out 0.45s forwards; }}
+
+/* === ORANGE SLIDE (Heating Up / Top Groups) - Fire === */
+.slide.orange-bg.active .slide-label {{ animation: fireLabel 0.5s ease-out forwards; }}
+.slide.orange-bg.active .rank-item {{ animation: fireRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }}
+.slide.orange-bg.active .rank-item:first-child {{ animation: fireTop 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }}
+.slide.orange-bg.active .rank-item:nth-child(1) {{ animation-delay: 0.08s; }}
+.slide.orange-bg.active .rank-item:nth-child(2) {{ animation-delay: 0.18s; }}
+.slide.orange-bg.active .rank-item:nth-child(3) {{ animation-delay: 0.28s; }}
+.slide.orange-bg.active .rank-item:nth-child(4) {{ animation-delay: 0.38s; }}
+.slide.orange-bg.active .rank-item:nth-child(5) {{ animation-delay: 0.48s; }}
+
+/* === SUMMARY SLIDE - Grand finale === */
+.slide.summary-slide.active .summary-card {{ animation: summaryReveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards; }}
+
+/* ===== KEYFRAMES ===== */
+
+/* Base animations */
+@keyframes labelSlide {{
+    0% {{ opacity: 0; transform: translateY(12px) translateX(-8px); }}
+    100% {{ opacity: 1; transform: translateY(0) translateX(0); }}
+}}
+
+@keyframes textFade {{
+    0% {{ opacity: 0; transform: translateY(15px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+@keyframes titleReveal {{
+    0% {{ opacity: 0; transform: translateY(25px) scale(0.95); }}
+    70% {{ transform: translateY(-3px) scale(1.01); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes iconPop {{
+    0% {{ opacity: 0; transform: translateY(20px) scale(0.4) rotate(-15deg); }}
+    50% {{ transform: translateY(-8px) scale(1.15) rotate(8deg); }}
+    75% {{ transform: translateY(2px) scale(0.95) rotate(-3deg); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1) rotate(0); }}
+}}
+
+@keyframes numberPop {{
+    0% {{ opacity: 0; transform: translateY(30px) scale(0.7); }}
+    60% {{ transform: translateY(-6px) scale(1.08); }}
+    80% {{ transform: translateY(2px) scale(0.98); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes namePop {{
+    0% {{ opacity: 0; transform: translateY(25px) scale(0.9); }}
+    70% {{ transform: translateY(-4px) scale(1.03); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes roastFade {{
+    0% {{ opacity: 0; transform: translateY(12px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+@keyframes statPop {{
+    0% {{ opacity: 0; transform: translateY(18px) scale(0.85); }}
+    60% {{ transform: translateY(-4px) scale(1.05); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes rankSlide {{
+    0% {{ opacity: 0; transform: translateX(-25px); }}
+    100% {{ opacity: 1; transform: translateX(0); }}
+}}
+
+@keyframes topRankReveal {{
+    0% {{ opacity: 0; transform: translateX(-35px) scale(0.95); }}
+    60% {{ transform: translateX(6px) scale(1.02); }}
+    100% {{ opacity: 1; transform: translateX(0) scale(1); }}
+}}
+
+@keyframes badgePop {{
+    0% {{ opacity: 0; transform: translateY(15px) scale(0.6); }}
+    50% {{ transform: translateY(-6px) scale(1.15); }}
+    75% {{ transform: translateY(2px) scale(0.95); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes emojiReveal {{
+    0% {{ opacity: 0; transform: translateY(25px) scale(0.8); letter-spacing: 40px; }}
+    60% {{ transform: translateY(-5px) scale(1.02); letter-spacing: 15px; }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); letter-spacing: 20px; }}
+}}
+
+@keyframes cardReveal {{
+    0% {{ opacity: 0; transform: translateY(50px) scale(0.92); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes buttonSlide {{
+    0% {{ opacity: 0; transform: translateY(20px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+@keyframes hintFade {{
+    0% {{ opacity: 0; transform: translateY(10px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+/* Intro slide */
+@keyframes introIconSpin {{
+    0% {{ opacity: 0; transform: translateY(30px) scale(0.2) rotate(-270deg); }}
+    50% {{ transform: translateY(-15px) scale(1.2) rotate(15deg); }}
+    75% {{ transform: translateY(5px) scale(0.9) rotate(-5deg); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1) rotate(0); }}
+}}
+
+@keyframes introTitleGlitch {{
+    0% {{ opacity: 0; transform: translateY(20px); filter: blur(8px); }}
+    30% {{ opacity: 0.7; transform: translateY(5px) skewX(-5deg); filter: blur(3px); }}
+    50% {{ transform: translateY(-3px) skewX(3deg); filter: blur(1px); }}
+    70% {{ transform: translateY(2px) skewX(-1deg); }}
+    100% {{ opacity: 1; transform: translateY(0) skewX(0); filter: blur(0); }}
+}}
+
+@keyframes subtitleFade {{
+    0% {{ opacity: 0; transform: translateY(15px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+/* WhatsApp slide - heartbeat */
+@keyframes labelGlow {{
+    0% {{ opacity: 0; transform: translateY(12px); }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+@keyframes heartbeatName {{
+    0% {{ opacity: 0; transform: translateY(30px) scale(0.7); }}
+    35% {{ transform: translateY(-8px) scale(1.18); }}
+    50% {{ transform: translateY(3px) scale(0.92); }}
+    65% {{ transform: translateY(-4px) scale(1.08); }}
+    80% {{ transform: translateY(1px) scale(0.98); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes loveNumber {{
+    0% {{ opacity: 0; transform: translateY(20px) scale(0.8) rotate(-5deg); }}
+    60% {{ transform: translateY(-5px) scale(1.08) rotate(2deg); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1) rotate(0); }}
+}}
+
+/* Purple slide - glitch */
+@keyframes labelGlitch {{
+    0% {{ opacity: 0; transform: translateY(12px); }}
+    30% {{ opacity: 0.5; transform: translateY(5px) skewX(-3deg); }}
+    60% {{ opacity: 0.8; transform: translateY(-2px) skewX(2deg); }}
+    100% {{ opacity: 1; transform: translateY(0) skewX(0); }}
+}}
+
+@keyframes personalityGlitch {{
+    0% {{ opacity: 0; transform: translateY(25px); filter: blur(10px); }}
+    15% {{ opacity: 0.4; transform: translateY(15px) skewX(-12deg); filter: blur(6px); }}
+    30% {{ opacity: 0.6; transform: translateY(8px) skewX(8deg); filter: blur(4px); }}
+    45% {{ opacity: 0.8; transform: translateY(3px) skewX(-5deg); filter: blur(2px); }}
+    60% {{ transform: translateY(-2px) skewX(3deg); filter: blur(1px); }}
+    75% {{ transform: translateY(1px) skewX(-1deg); }}
+    90% {{ transform: skewX(0.5deg); }}
+    100% {{ opacity: 1; transform: translateY(0) skewX(0); filter: blur(0); }}
+}}
+
+@keyframes flickerReveal {{
+    0% {{ opacity: 0; transform: translateY(10px); }}
+    15% {{ opacity: 0.3; }}
+    30% {{ opacity: 0.1; }}
+    45% {{ opacity: 0.6; }}
+    60% {{ opacity: 0.2; }}
+    75% {{ opacity: 0.8; }}
+    90% {{ opacity: 0.5; }}
+    100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+@keyframes glitchReveal {{
+    0% {{ opacity: 0; transform: translateY(20px); filter: blur(6px); }}
+    25% {{ opacity: 0.5; transform: translateY(10px) skewX(-6deg); filter: blur(3px); }}
+    50% {{ opacity: 0.8; transform: translateY(3px) skewX(4deg); filter: blur(1px); }}
+    75% {{ transform: translateY(-1px) skewX(-1deg); }}
+    100% {{ opacity: 1; transform: translateY(0) skewX(0); filter: blur(0); }}
+}}
+
+/* Red slide - dramatic */
+@keyframes labelPulse {{
+    0% {{ opacity: 0; transform: translateY(12px); }}
+    50% {{ opacity: 0.7; transform: translateY(3px) scale(1.05); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes dramaticDrop {{
+    0% {{ opacity: 0; transform: translateY(-60px) scale(1.3); }}
+    50% {{ transform: translateY(12px) scale(0.92); }}
+    75% {{ transform: translateY(-5px) scale(1.03); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+@keyframes desperateNumber {{
+    0% {{ opacity: 0; transform: translateY(20px) scale(0.6); }}
+    35% {{ transform: translateY(-8px) scale(1.2); }}
+    55% {{ transform: translateY(4px) scale(0.9); }}
+    75% {{ transform: translateY(-2px) scale(1.05); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
+
+/* Orange slide - fire */
+@keyframes fireLabel {{
+    0% {{ opacity: 0; transform: translateY(12px); filter: brightness(1.5); }}
+    100% {{ opacity: 1; transform: translateY(0); filter: brightness(1); }}
+}}
+
+@keyframes fireRise {{
+    0% {{ opacity: 0; transform: translateY(35px) scale(0.9); filter: brightness(1.6); }}
+    40% {{ filter: brightness(1.4); }}
+    70% {{ transform: translateY(-3px) scale(1.02); filter: brightness(1.2); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }}
+}}
+
+@keyframes fireTop {{
+    0% {{ opacity: 0; transform: translateY(40px) scale(0.9); filter: brightness(2); }}
+    50% {{ filter: brightness(1.5); }}
+    75% {{ transform: translateY(-5px) scale(1.03); filter: brightness(1.2); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }}
+}}
+
+/* Summary slide - grand finale */
+@keyframes summaryReveal {{
+    0% {{ opacity: 0; transform: translateY(60px) scale(0.88); }}
+    50% {{ transform: translateY(-8px) scale(1.02); }}
+    75% {{ transform: translateY(3px) scale(0.99); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+}}
 
 .summary-card {{
     background:linear-gradient(145deg,#1a1a2e 0%,#0d1f0f 100%);
