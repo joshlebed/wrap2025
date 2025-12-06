@@ -710,6 +710,7 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 }}
 
 .slide {{
+    position:relative;
     min-width:100vw;
     height:100vh;
     display:flex;
