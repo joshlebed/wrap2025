@@ -296,7 +296,7 @@ def analyze(ts_start, ts_jun, contacts):
         r = q(f"SELECT COUNT(*) FROM message WHERE text LIKE '%{e}%' AND (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
         counts[e] = r[0][0]
     d['emoji'] = sorted(counts.items(), key=lambda x:-x[1])[:5]
-    
+
     # Total words sent (excluding reactions, empty messages, and attachments-only)
     # Simple approach: count messages with text as minimum, then add extra for spaces
     # This ensures we get at least 1 word per text message
@@ -618,18 +618,7 @@ def gen_html(d, contacts, path):
     
     # Slide 4: Your #1 (only if we have contacts)
     if top:
-        slides.append(f'''
-        <div class="slide pink-bg">
-            <div class="slide-label">// YOUR #1</div>
-            <div class="slide-text">most texted person</div>
-            <div class="huge-name">{top[0]["name"]}</div>
-            <div class="big-number yellow">{top[0]["count"]:,}</div>
-            <div class="slide-text">messages</div>
-            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_your_number_one.png', this)">📸 Save</button>
-            <div class="slide-watermark">wrap2025.com</div>
-        </div>''')
-
-        # Slide 5: Top 5
+        # Slide 4: Inner circle (top person + list)
         top_list_html = ''.join([
             f'<div class="rank-item{" hidden-inner" if i>5 else ""}"><span class="rank-num">{i}</span><span class="rank-name">{c["name"]}</span><span class="rank-count">{c["count"]:,}</span></div>'
             for i, c in enumerate(top[:10], 1)
@@ -638,9 +627,15 @@ def gen_html(d, contacts, path):
         if len(top) > 5:
             toggle_inner_btn = '<button class="toggle-busiest-btn" onclick="toggleInner(this)">Show full top 10</button>'
         slides.append(f'''
-        <div class="slide">
+        <div class="slide pink-bg">
             <div class="slide-label">// INNER CIRCLE</div>
-            <div class="slide-text">your top 5</div>
+            <div class="top-highlight">
+                <div class="slide-text">your #1</div>
+                <div class="huge-name">{top[0]["name"]}</div>
+                <div class="big-number yellow">{top[0]["count"]:,}</div>
+                <div class="slide-text">messages</div>
+            </div>
+            <div class="slide-text">and the rest of your roster</div>
             <div class="rank-list inner-list">{top_list_html}</div>
             {toggle_inner_btn}
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_inner_circle.png', this)">📸 Save</button>
@@ -655,24 +650,7 @@ def gen_html(d, contacts, path):
         lurker_label = "LURKER" if lurker_pct > 60 else "CONTRIBUTOR" if lurker_pct < 40 else "BALANCED"
         lurker_class = "yellow" if lurker_pct > 60 else "green" if lurker_pct < 40 else "cyan"
 
-        # Slide 6: Group Chat Overview
-        slides.append(f'''
-        <div class="slide">
-            <div class="slide-label">// GROUP CHATS</div>
-            <div class="slide-icon">👥</div>
-            <div class="big-number green">{gs['count']}</div>
-            <div class="slide-text">active group chats</div>
-            <div class="stat-grid">
-                <div class="stat-item"><span class="stat-num">{gs['total']:,}</span><span class="stat-lbl">total msgs</span></div>
-                <div class="stat-item"><span class="stat-num">{gs['sent']:,}</span><span class="stat-lbl">sent</span></div>
-                <div class="stat-item"><span class="stat-num">{round(gs['sent']/max(gs['total'],1)*100)}%</span><span class="stat-lbl">yours</span></div>
-            </div>
-            <div class="badge {lurker_class}">{lurker_label}</div>
-            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_group_chats.png', this)">📸 Save</button>
-            <div class="slide-watermark">wrap2025.com</div>
-        </div>''')
-
-        # Slide 7: Group Chat Leaderboard
+        # Slide 6: Group Chat Overview + Leaderboard
         if d['group_leaderboard']:
             # Helper to format group name
             def format_group_name(gc):
@@ -693,16 +671,29 @@ def gen_html(d, contacts, path):
             ])
             toggle_group_btn = ''
             if len(d['group_leaderboard']) > 5:
-                toggle_group_btn = '<button class="toggle-busiest-btn" onclick="toggleGroup(this)">Show full top 10</button>'
-            slides.append(f'''
-            <div class="slide orange-bg">
-                <div class="slide-label">// TOP GROUP CHATS</div>
-                <div class="slide-text">your most active groups</div>
-                <div class="rank-list group-list">{gc_html}</div>
-                {toggle_group_btn}
-                <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_top_groups.png', this)">📸 Save</button>
-                <div class="slide-watermark">wrap2025.com</div>
-            </div>''')
+                toggle_group_btn = '<button class="toggle-busiest-btn toggle-group-btn" onclick="toggleGroup(this)">Show full top 10</button>'
+        else:
+            gc_html = '<div class="slide-text">no group data</div>'
+            toggle_group_btn = ''
+
+        slides.append(f'''
+        <div class="slide orange-bg">
+            <div class="slide-label">// GROUP CHATS</div>
+            <div class="slide-icon">👥</div>
+            <div class="big-number green">{gs['count']}</div>
+            <div class="slide-text">active group chats</div>
+            <div class="stat-grid">
+                <div class="stat-item"><span class="stat-num">{gs['total']:,}</span><span class="stat-lbl">total msgs</span></div>
+                <div class="stat-item"><span class="stat-num">{gs['sent']:,}</span><span class="stat-lbl">sent</span></div>
+                <div class="stat-item"><span class="stat-num">{round(gs['sent']/max(gs['total'],1)*100)}%</span><span class="stat-lbl">yours</span></div>
+            </div>
+            <div class="badge {lurker_class}">{lurker_label}</div>
+            <div class="slide-text" style="margin-top:18px;">your most active groups</div>
+            <div class="rank-list group-list">{gc_html}</div>
+            {toggle_group_btn}
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_top_groups.png', this)">📸 Save</button>
+            <div class="slide-watermark">wrap2025.com</div>
+        </div>''')
 
     # Slide 8: Personality
     slides.append(f'''
@@ -754,40 +745,48 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 12: Streaks
+    # Slide 12: Grind + marathon (combined)
+    streak_card = ''
+    marathon_card = ''
     if d.get('streak'):
         st = d['streak']
         st_start = st['start'].strftime('%b %d')
         st_end = st['end'].strftime('%b %d')
-        slides.append(f'''
-        <div class="slide">
-            <div class="slide-label">// STREAKS</div>
-            <div class="slide-text">longest daily grind</div>
-            <div class="huge-name green">{n(st['handle'])}</div>
-            <div class="big-number yellow">{st['length']}</div>
+        streak_card = f'''
+        <div class="stat-card">
+            <div class="stat-tag">Streak</div>
+            <div class="stat-name green">{n(st['handle'])}</div>
+            <div class="stat-number yellow">{st['length']}</div>
             <div class="slide-text">days in a row ({st_start} → {st_end})</div>
             <div class="slide-text" style="max-width:420px;">consecutive days with at least one message between you two</div>
-            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_streaks.png', this)">📸 Save</button>
-            <div class="slide-watermark">wrap2025.com</div>
-        </div>''')
-
-    # Slide 13: Message marathon
+        </div>
+        '''
     if d.get('marathon'):
         mm = d['marathon']
         mm_date = dt.strptime(mm['date'], '%Y-%m-%d').strftime('%b %d')
+        marathon_card = f'''
+        <div class="stat-card">
+            <div class="stat-tag">Marathon</div>
+            <div class="stat-name cyan">{n(mm['handle'])}</div>
+            <div class="stat-number yellow">{mm['count']:,}</div>
+            <div class="slide-text">messages on {mm_date} across {mm['hours']}h</div>
+            <div class="slide-text" style="max-width:420px;">1:1 only; duration is first to last ping that day</div>
+        </div>
+        '''
+    if streak_card or marathon_card:
         slides.append(f'''
         <div class="slide">
-            <div class="slide-label">// MESSAGE MARATHON</div>
-            <div class="slide-text">most unhinged single-day convo</div>
-            <div class="huge-name cyan">{n(mm['handle'])}</div>
-            <div class="big-number yellow">{mm['count']:,}</div>
-            <div class="slide-text">messages on {mm_date} across {mm['hours']}h</div>
-            <div class="slide-text" style="max-width:420px;">counted only 1:1 chats; duration is first to last ping that day</div>
-            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_marathon.png', this)">📸 Save</button>
+            <div class="slide-label">// GRIND + MARATHON</div>
+            <div class="slide-text">your longest runs</div>
+            <div class="dual-cards">
+                {streak_card or ''}
+                {marathon_card or ''}
+            </div>
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_grind_marathon.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 14: 3AM Bestie
+    # Slide 13: 3AM Bestie
     if d['late']:
         ln = d['late'][0]
         slides.append(f'''
@@ -802,7 +801,7 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 15: Busiest Day
+    # Slide 14: Busiest Day
     if d['busiest_day']:
         top_busiest_html = ''
         if busiest_top:
@@ -831,7 +830,7 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 14: Biggest fan
+    # Slide 15: Biggest fan
     if d['fan']:
         f = d['fan'][0]
         ratio = round(f[1]/(f[2]+1), 1)
@@ -845,7 +844,7 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 15: Down bad
+    # Slide 16: Down bad
     if d['simp']:
         si = d['simp'][0]
         ratio = round(si[1]/(si[2]+1), 1)
@@ -859,29 +858,23 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 16: Heating Up
-    if d['heating']:
-        heat_html = ''.join([f'<div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">{n(h)}</span><span class="rank-count green">+{h2-h1}</span></div>' for h,h1,h2 in d['heating'][:5]])
-        slides.append(f'''
-        <div class="slide orange-bg">
-            <div class="slide-label">// HEATING UP</div>
-            <div class="slide-text">getting stronger in H2</div>
-            <div class="slide-text" style="max-width:420px;">who you messaged way more in the back half of the year (Jul-Dec) compared to the front half</div>
-            <div class="rank-list">{heat_html}</div>
-            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_heating_up.png', this)">📸 Save</button>
-            <div class="slide-watermark">wrap2025.com</div>
-        </div>''')
-
-    # Slide 17: Ghosted
-    if d['ghosted']:
-        ghost_html = ''.join([f'<div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">{n(h)}</span><span class="rank-count"><span class="green">{b}</span> → <span class="red">{a}</span></span></div>' for h,b,a in d['ghosted'][:5]])
+    # Slide 17: Vibe check (heating + ghosted)
+    if d.get('heating') or d.get('ghosted'):
+        heat_html = ''
+        ghost_html = ''
+        if d.get('heating'):
+            heat_html = ''.join([f'<div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">{n(h)}</span><span class="rank-count green">+{h2-h1}</span></div>' for h,h1,h2 in d['heating'][:5]])
+        if d.get('ghosted'):
+            ghost_html = ''.join([f'<div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">{n(h)}</span><span class="rank-count"><span class="green">{b}</span> → <span class="red">{a}</span></span></div>' for h,b,a in d['ghosted'][:5]])
         slides.append(f'''
         <div class="slide">
-            <div class="slide-label">// GHOSTED</div>
-            <div class="slide-text">they chose peace</div>
-            <div class="rank-list">{ghost_html}</div>
-            <div class="roast" style="margin-top:16px;">before June → after</div>
-            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_ghosted.png', this)">📸 Save</button>
+            <div class="slide-label">// VIBE CHECK</div>
+            <div class="slide-text">who got hotter vs who cooled off</div>
+            <div class="dual-cards">
+                {f'<div class="stat-card"><div class="stat-tag">Heating Up</div><div class="note-text">more msgs in H2 than H1</div><div class="rank-list">{heat_html}</div></div>' if heat_html else ''}
+                {f'<div class="stat-card"><div class="stat-tag">Ghosted</div><div class="note-text">dropped off after June</div><div class="rank-list">{ghost_html}</div><div class="note-text" style="margin-top:6px;">before June → after</div></div>' if ghost_html else ''}
+            </div>
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_vibe_check.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
@@ -1042,7 +1035,7 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .rank-item:first-child .rank-name {{ font-weight:600; color:var(--green); }}
 .rank-item:first-child .rank-count {{ font-size:20px; }}
 .rank-num {{ font-family:var(--font-mono); font-size:20px; font-weight:600; color:var(--green); width:36px; text-align:center; }}
-.rank-name {{ flex:1; font-size:16px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.rank-name {{ flex:1; font-size:16px; text-align:left; white-space:normal; word-break:break-word; }}
 .rank-count {{ font-family:var(--font-mono); font-size:18px; font-weight:600; color:var(--yellow); }}
 .rank-list.inner-list .hidden-inner {{ display:none; }}
 .rank-list.inner-list.show-all .hidden-inner {{ display:flex; }}
@@ -1050,8 +1043,17 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .rank-list.group-list.show-all .hidden-group {{ display:flex; }}
 .rank-list.busiest-list .hidden-busiest {{ display:none; }}
 .rank-list.busiest-list.show-all .hidden-busiest {{ display:flex; }}
+.dual-cards {{ display:flex; gap:16px; flex-wrap:wrap; justify-content:center; width:100%; max-width:640px; margin-top:14px; }}
+.stat-card {{ flex:1; min-width:260px; padding:16px; border:1px solid rgba(255,255,255,0.1); border-radius:12px; background:rgba(255,255,255,0.03); }}
+.stat-tag {{ font-family:var(--font-pixel); font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; }}
+.stat-name {{ font-family:var(--font-body); font-size:18px; font-weight:600; margin:6px 0; }}
+.stat-number {{ font-family:var(--font-mono); font-size:36px; font-weight:600; line-height:1; }}
+.stat-card .rank-item {{ align-items:flex-start; }}
+.note-text {{ font-size:13px; color:var(--muted); margin:6px 0 10px; }}
+.stat-card .slide-text {{ font-size:15px; line-height:1.45; color:var(--muted); }}
 .toggle-busiest-btn {{
     margin-top:12px;
+    margin-bottom:80px;
     padding:10px 18px;
     font-family:var(--font-pixel);
     font-size:9px;
@@ -1063,6 +1065,7 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
     color:var(--text);
     cursor:pointer;
 }}
+.toggle-group-btn {{ margin-bottom:200px; }}
 .toggle-busiest-btn:hover {{ border-color:var(--green); color:var(--green); }}
 
 .badge {{ display:inline-block; padding:8px 18px; border-radius:24px; font-family:var(--font-pixel); font-size:9px; font-weight:400; text-transform:uppercase; letter-spacing:0.3px; margin-top:20px; border:2px solid; }}
