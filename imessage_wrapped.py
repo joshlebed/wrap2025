@@ -1012,7 +1012,7 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .contrib-week {{ display:flex; flex-direction:column; gap:2px; }}
 .contrib-cell {{ width:10px; height:10px; border-radius:2px; background:rgba(255,255,255,0.05); }}
 .contrib-cell.empty {{ background:transparent; }}
-.contrib-cell.level-0 {{ background:rgba(255,255,255,0.05); }}
+.contrib-cell.level-0 {{ background:rgba(255,255,255,0.12); }}
 .contrib-cell.level-1 {{ background:rgba(74,222,128,0.25); }}
 .contrib-cell.level-2 {{ background:rgba(74,222,128,0.45); }}
 .contrib-cell.level-3 {{ background:rgba(74,222,128,0.70); }}
