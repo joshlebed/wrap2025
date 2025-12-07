@@ -70,6 +70,36 @@ python3 whatsapp_wrapped.py
 
 ---
 
+### Combined Wrapped (iMessage + WhatsApp)
+
+Combine both iMessage and WhatsApp data into a unified report.
+
+#### 1. Download the script
+
+```bash
+curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/combined_wrapped.py
+```
+
+#### 2. Grant Terminal access
+
+The script needs to read both message databases:
+
+**System Settings -> Privacy & Security -> Full Disk Access -> Add Terminal**
+
+#### 3. Run it
+
+```bash
+python3 combined_wrapped.py
+```
+
+The combined script will:
+- Merge message counts from both platforms
+- Combine and re-rank your top contacts
+- Unify daily activity into a single contribution graph
+- Work even if only one platform is available
+
+---
+
 Your wrapped will open in your browser automatically.
 
 ## Options
@@ -78,10 +108,12 @@ Your wrapped will open in your browser automatically.
 # Use 2024 data instead of 2025
 python3 imessage_wrapped.py --use-2024
 python3 whatsapp_wrapped.py --use-2024
+python3 combined_wrapped.py --use-2024
 
 # Custom output filename
 python3 imessage_wrapped.py -o my_wrapped.html
 python3 whatsapp_wrapped.py -o my_wrapped.html
+python3 combined_wrapped.py -o my_wrapped.html
 ```
 
 If you don't have enough 2025 messages yet, the script will automatically fall back to 2024.
