@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """
-iMessage Wrapped 2025 - Your texting habits, exposed.
-Usage: python3 imessage_wrapped.py
+Combined Wrapped 2025 - Your texting habits across iMessage AND WhatsApp, exposed.
+Usage: python3 combined_wrapped.py
 """
 
 import sqlite3, os, sys, re, subprocess, argparse, glob, threading, time
-from datetime import datetime
+from datetime import datetime, timedelta
 
+# Database paths
 IMESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
 ADDRESSBOOK_DIR = os.path.expanduser("~/Library/Application Support/AddressBook")
+WHATSAPP_PATHS = [
+    os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite"),
+    os.path.expanduser("~/Library/Containers/com.whatsapp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite"),
+    os.path.expanduser("~/Library/Containers/desktop.WhatsApp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite"),
+]
+
+WHATSAPP_DB = None
 
 class Spinner:
     """Animated terminal spinner for long operations"""
@@ -42,24 +50,31 @@ class Spinner:
         else:
             print()
 
-TS_2025 = 1735689600
-TS_JUN_2025 = 1748736000
-TS_2024 = 1704067200
-TS_JUN_2024 = 1717200000
+# Timestamps
+# iMessage: Unix timestamp in nanoseconds since 2001
+TS_2025_IMESSAGE = 1735689600
+TS_JUN_2025_IMESSAGE = 1748736000
+TS_2024_IMESSAGE = 1704067200
+TS_JUN_2024_IMESSAGE = 1717200000
+
+# WhatsApp: Cocoa Core Data Time (seconds since Jan 1, 2001)
+COCOA_OFFSET = 978307200
+TS_2025_WHATSAPP = 757382400
+TS_JUN_2025_WHATSAPP = 770428800
+TS_2024_WHATSAPP = 725846400
+TS_JUN_2024_WHATSAPP = 738892800
 
 def normalize_phone(phone):
     if not phone: return None
     digits = re.sub(r'\D', '', str(phone))
-    # Handle common international prefixes
     if len(digits) == 11 and digits.startswith('1'):
-        digits = digits[1:]  # US/Canada +1
+        digits = digits[1:]
     elif len(digits) > 10:
-        # For international numbers, store full digits for exact matching
-        # but also try common formats
         return digits
     return digits[-10:] if len(digits) >= 10 else (digits if len(digits) >= 7 else None)
 
-def extract_contacts():
+def extract_imessage_contacts():
+    """Extract contacts from macOS AddressBook."""
     contacts = {}
     db_paths = glob.glob(os.path.join(ADDRESSBOOK_DIR, "Sources", "*", "AddressBook-v22.abcddb"))
     main_db = os.path.join(ADDRESSBOOK_DIR, "AddressBook-v22.abcddb")
@@ -75,70 +90,124 @@ def extract_contacts():
                 if owner in people:
                     name = people[owner]
                     digits = re.sub(r'\D', '', str(phone))
-                    # Store multiple formats for better matching
                     if digits:
-                        contacts[digits] = name  # Full international
+                        contacts[digits] = name
                         if len(digits) >= 10:
-                            contacts[digits[-10:]] = name  # Last 10
+                            contacts[digits[-10:]] = name
                         if len(digits) >= 7:
-                            contacts[digits[-7:]] = name  # Last 7 (local)
+                            contacts[digits[-7:]] = name
                         if len(digits) == 11 and digits.startswith('1'):
-                            contacts[digits[1:]] = name  # Without US prefix
+                            contacts[digits[1:]] = name
             for owner, email in conn.execute("SELECT ZOWNER, ZADDRESS FROM ZABCDEMAILADDRESS WHERE ZADDRESS IS NOT NULL"):
                 if owner in people: contacts[email.lower().strip()] = people[owner]
             conn.close()
         except: pass
     return contacts
 
-def get_name(handle, contacts):
+def extract_whatsapp_contacts():
+    """Extract contact names from WhatsApp's ZWAPROFILEPUSHNAME table."""
+    contacts = {}
+    if not WHATSAPP_DB:
+        return contacts
+    try:
+        conn = sqlite3.connect(WHATSAPP_DB)
+        for row in conn.execute("SELECT ZJID, ZPUSHNAME FROM ZWAPROFILEPUSHNAME WHERE ZPUSHNAME IS NOT NULL"):
+            jid, name = row
+            if jid and name:
+                contacts[jid] = name
+        conn.close()
+    except:
+        pass
+    return contacts
+
+def get_name_imessage(handle, contacts):
     if '@' in handle:
         lookup = handle.lower().strip()
         if lookup in contacts: return contacts[lookup]
         return handle.split('@')[0]
-    # Try multiple phone formats for matching
     digits = re.sub(r'\D', '', str(handle))
-    # Try full digits first (international)
     if digits in contacts: return contacts[digits]
-    # Try without leading 1 (US/Canada)
     if len(digits) == 11 and digits.startswith('1'):
         if digits[1:] in contacts: return contacts[digits[1:]]
-    # Try last 10 digits
     if len(digits) >= 10 and digits[-10:] in contacts:
         return contacts[digits[-10:]]
-    # Try last 7 digits (local)
     if len(digits) >= 7 and digits[-7:] in contacts:
         return contacts[digits[-7:]]
     return handle
 
+def get_name_whatsapp(jid, contacts):
+    if not jid:
+        return "Unknown"
+    if jid in contacts:
+        return contacts[jid]
+    if '@' in jid:
+        phone = jid.split('@')[0]
+        if len(phone) == 10:
+            return f"({phone[:3]}) {phone[3:6]}-{phone[6:]}"
+        elif len(phone) == 11 and phone.startswith('1'):
+            return f"+1 ({phone[1:4]}) {phone[4:7]}-{phone[7:]}"
+        return f"+{phone}"
+    return jid
+
+def find_whatsapp_database():
+    """Find the WhatsApp database path."""
+    for path in WHATSAPP_PATHS:
+        if os.path.exists(path):
+            return path
+    return None
+
 def check_access():
-    if not os.path.exists(IMESSAGE_DB):
-        print("\n[FATAL] Not macOS.")
-        sys.exit(1)
-    try:
-        conn = sqlite3.connect(IMESSAGE_DB)
-        conn.execute("SELECT 1 FROM message LIMIT 1")
-        conn.close()
-    except:
-        print("\n⚠️  ACCESS DENIED")
-        print("   System Settings → Privacy & Security → Full Disk Access → Add Terminal")
+    """Check access to both databases. Returns (has_imessage, has_whatsapp)."""
+    global WHATSAPP_DB
+
+    has_imessage = False
+    has_whatsapp = False
+
+    # Check iMessage
+    if os.path.exists(IMESSAGE_DB):
+        try:
+            conn = sqlite3.connect(IMESSAGE_DB)
+            conn.execute("SELECT 1 FROM message LIMIT 1")
+            conn.close()
+            has_imessage = True
+        except:
+            pass
+
+    # Check WhatsApp
+    WHATSAPP_DB = find_whatsapp_database()
+    if WHATSAPP_DB:
+        try:
+            conn = sqlite3.connect(WHATSAPP_DB)
+            conn.execute("SELECT 1 FROM ZWAMESSAGE LIMIT 1")
+            conn.close()
+            has_whatsapp = True
+        except:
+            pass
+
+    if not has_imessage and not has_whatsapp:
+        print("\n[!] ACCESS DENIED - Neither iMessage nor WhatsApp accessible")
+        print("   System Settings -> Privacy & Security -> Full Disk Access -> Add Terminal")
         subprocess.run(['open', 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'])
         sys.exit(1)
 
-def q(sql):
+    return has_imessage, has_whatsapp
+
+def q_imessage(sql):
     conn = sqlite3.connect(IMESSAGE_DB)
     r = conn.execute(sql).fetchall()
     conn.close()
     return r
 
-def analyze(ts_start, ts_jun):
+def q_whatsapp(sql):
+    conn = sqlite3.connect(WHATSAPP_DB)
+    r = conn.execute(sql).fetchall()
+    conn.close()
+    return r
+
+def analyze_imessage(ts_start, ts_jun):
+    """Analyze iMessage data and return stats dict."""
     d = {}
 
-    # === IDENTIFY 1:1 vs GROUP CHATS ===
-    # 1:1 chats have exactly 1 participant in chat_handle_join
-    # Group chats have 2+ participants
-    # We'll use this CTE pattern to filter queries
-
-    # Common table expression for 1:1 chat filtering
     one_on_one_cte = """
         WITH chat_participants AS (
             SELECT chat_id, COUNT(*) as participant_count
@@ -154,8 +223,8 @@ def analyze(ts_start, ts_jun):
         )
     """
 
-    # Stats: handle NULL from SUM when 0 messages (1:1 only)
-    raw_stats = q(f"""{one_on_one_cte}
+    # Stats
+    raw_stats = q_imessage(f"""{one_on_one_cte}
         SELECT COUNT(*), SUM(CASE WHEN is_from_me=1 THEN 1 ELSE 0 END), SUM(CASE WHEN is_from_me=0 THEN 1 ELSE 0 END), COUNT(DISTINCT handle_id)
         FROM message m
         WHERE (date/1000000000+978307200)>{ts_start}
@@ -163,8 +232,8 @@ def analyze(ts_start, ts_jun):
     """)[0]
     d['stats'] = (raw_stats[0] or 0, raw_stats[1] or 0, raw_stats[2] or 0, raw_stats[3] or 0)
 
-    # Top contacts (1:1 only, excluding 5-6 digit shortcodes like 12345, 123456)
-    d['top'] = q(f"""{one_on_one_cte}
+    # Top contacts
+    d['top'] = q_imessage(f"""{one_on_one_cte}
         SELECT h.id, COUNT(*) t, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END), SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END)
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
@@ -173,64 +242,67 @@ def analyze(ts_start, ts_jun):
         GROUP BY h.id ORDER BY t DESC LIMIT 20
     """)
 
-    # Late night texters (1:1 only, excluding shortcodes)
-    d['late'] = q(f"""{one_on_one_cte}
+    # Late night
+    d['late'] = q_imessage(f"""{one_on_one_cte}
         SELECT h.id, COUNT(*) n FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND CAST(strftime('%H',datetime((m.date/1000000000+978307200),'unixepoch','localtime')) AS INT)<5
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
-        GROUP BY h.id HAVING n>5 ORDER BY n DESC LIMIT 5
+        GROUP BY h.id HAVING n>5 ORDER BY n DESC LIMIT 10
     """)
-    
-    r = q(f"SELECT CAST(strftime('%H',datetime((date/1000000000+978307200),'unixepoch','localtime')) AS INT) h, COUNT(*) c FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY h ORDER BY c DESC LIMIT 1")
+
+    # Peak hour
+    r = q_imessage(f"SELECT CAST(strftime('%H',datetime((date/1000000000+978307200),'unixepoch','localtime')) AS INT) h, COUNT(*) c FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY h ORDER BY c DESC LIMIT 1")
     d['hour'] = r[0][0] if r else 12
+
+    # Peak day
     days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-    r = q(f"SELECT CAST(strftime('%w',datetime((date/1000000000+978307200),'unixepoch','localtime')) AS INT) d, COUNT(*) FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY 2 DESC LIMIT 1")
+    r = q_imessage(f"SELECT CAST(strftime('%w',datetime((date/1000000000+978307200),'unixepoch','localtime')) AS INT) d, COUNT(*) FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY 2 DESC LIMIT 1")
     d['day'] = days[r[0][0]] if r else '???'
-    
-    # Ghosted (1:1 only, excluding shortcodes)
-    d['ghosted'] = q(f"""{one_on_one_cte}
+
+    # Ghosted
+    d['ghosted'] = q_imessage(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN m.is_from_me=0 AND (m.date/1000000000+978307200)<{ts_jun} THEN 1 ELSE 0 END) b, SUM(CASE WHEN m.is_from_me=0 AND (m.date/1000000000+978307200)>={ts_jun} THEN 1 ELSE 0 END) a
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
-        GROUP BY h.id HAVING b>10 AND a<3 ORDER BY b DESC LIMIT 5
+        GROUP BY h.id HAVING b>10 AND a<3 ORDER BY b DESC LIMIT 10
     """)
 
-    # Heating up (1:1 only, excluding shortcodes)
-    d['heating'] = q(f"""{one_on_one_cte}
+    # Heating up
+    d['heating'] = q_imessage(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN (m.date/1000000000+978307200)<{ts_jun} THEN 1 ELSE 0 END) h1, SUM(CASE WHEN (m.date/1000000000+978307200)>={ts_jun} THEN 1 ELSE 0 END) h2
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
-        GROUP BY h.id HAVING h1>20 AND h2>h1*1.5 ORDER BY (h2-h1) DESC LIMIT 5
+        GROUP BY h.id HAVING h1>20 AND h2>h1*1.5 ORDER BY (h2-h1) DESC LIMIT 10
     """)
 
-    # Biggest fan (1:1 only, excluding shortcodes)
-    d['fan'] = q(f"""{one_on_one_cte}
+    # Biggest fan
+    d['fan'] = q_imessage(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) t, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) y
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
-        GROUP BY h.id HAVING t>y*2 AND (t+y)>100 ORDER BY (t*1.0/NULLIF(y,0)) DESC LIMIT 5
+        GROUP BY h.id HAVING t>y*2 AND (t+y)>100 ORDER BY (t*1.0/NULLIF(y,0)) DESC LIMIT 10
     """)
 
-    # Simp (1:1 only, excluding shortcodes)
-    d['simp'] = q(f"""{one_on_one_cte}
+    # Simp
+    d['simp'] = q_imessage(f"""{one_on_one_cte}
         SELECT h.id, SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) y, SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) t
         FROM message m JOIN handle h ON m.handle_id=h.ROWID
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
-        GROUP BY h.id HAVING y>t*2 AND (t+y)>100 ORDER BY (y*1.0/NULLIF(t,0)) DESC LIMIT 5
+        GROUP BY h.id HAVING y>t*2 AND (t+y)>100 ORDER BY (y*1.0/NULLIF(t,0)) DESC LIMIT 10
     """)
-    
-    # Response time: partition by handle_id so we measure per-conversation (1:1 only)
-    r = q(f"""
+
+    # Response time
+    r = q_imessage(f"""
         WITH chat_participants AS (
             SELECT chat_id, COUNT(*) as participant_count
             FROM chat_handle_join
@@ -255,246 +327,528 @@ def analyze(ts_start, ts_jun):
         WHERE is_from_me=1 AND pf=0 AND (ts-pt)<86400 AND (ts-pt)>10
     """)
     d['resp'] = int(r[0][0] or 30)
-    
+
+    # Emojis
     emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
     counts = {}
     for e in emojis:
-        r = q(f"SELECT COUNT(*) FROM message WHERE text LIKE '%{e}%' AND (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
+        r = q_imessage(f"SELECT COUNT(*) FROM message WHERE text LIKE '%{e}%' AND (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
         counts[e] = r[0][0]
-    d['emoji'] = sorted(counts.items(), key=lambda x:-x[1])[:5]
-    
-    # Total words sent (excluding reactions, empty messages, and attachments-only)
-    # Simple approach: count messages with text as minimum, then add extra for spaces
-    # This ensures we get at least 1 word per text message
-    r = q(f"""
-        SELECT
-            COUNT(*) as msg_count,
-            COALESCE(SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', ''))), 0) as extra_words
+    d['emoji'] = counts
+
+    # Words
+    r = q_imessage(f"""
+        SELECT COUNT(*), COALESCE(SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', ''))), 0)
         FROM message
         WHERE (date/1000000000+978307200)>{ts_start}
-        AND is_from_me=1
-        AND text IS NOT NULL
-        AND LENGTH(text) > 0
-        AND text NOT LIKE 'Loved "%'
-        AND text NOT LIKE 'Liked "%'
-        AND text NOT LIKE 'Disliked "%'
-        AND text NOT LIKE 'Laughed at "%'
-        AND text NOT LIKE 'Emphasized "%'
-        AND text NOT LIKE 'Questioned "%'
+        AND is_from_me=1 AND text IS NOT NULL AND LENGTH(text) > 0
+        AND text NOT LIKE 'Loved "%' AND text NOT LIKE 'Liked "%'
+        AND text NOT LIKE 'Disliked "%' AND text NOT LIKE 'Laughed at "%'
+        AND text NOT LIKE 'Emphasized "%' AND text NOT LIKE 'Questioned "%'
         AND text NOT LIKE '%￼%'
     """)
-    # Words = number of messages with text + number of spaces (each space = 1 extra word)
-    msg_count = r[0][0] or 0
-    extra_words = r[0][1] or 0
-    d['words'] = msg_count + extra_words
-    
-    # NEW: Busiest day
-    r = q(f"SELECT DATE(datetime((date/1000000000+978307200),'unixepoch','localtime')) d, COUNT(*) c FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY c DESC LIMIT 1")
-    if r:
-        d['busiest_day'] = (r[0][0], r[0][1])  # ('2025-03-15', 523)
-    else:
-        d['busiest_day'] = None
-    
-    # NEW: Conversation starter % (who texts first after 4+ hour gap) - 1:1 only
-    r = q(f"""
+    d['words'] = (r[0][0] or 0) + (r[0][1] or 0)
+
+    # Busiest day
+    r = q_imessage(f"SELECT DATE(datetime((date/1000000000+978307200),'unixepoch','localtime')) d, COUNT(*) c FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY c DESC LIMIT 1")
+    d['busiest_day'] = (r[0][0], r[0][1]) if r else None
+
+    # Starter %
+    r = q_imessage(f"""
         WITH chat_participants AS (
             SELECT chat_id, COUNT(*) as participant_count
-            FROM chat_handle_join
-            GROUP BY chat_id
+            FROM chat_handle_join GROUP BY chat_id
         ),
         one_on_one_messages AS (
-            SELECT m.ROWID as msg_id
-            FROM message m
+            SELECT m.ROWID as msg_id FROM message m
             JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
             JOIN chat_participants cp ON cmj.chat_id = cp.chat_id
             WHERE cp.participant_count = 1
         ),
         convos AS (
-            SELECT m.is_from_me,
-                   (m.date/1000000000+978307200) as ts,
+            SELECT m.is_from_me, (m.date/1000000000+978307200) as ts,
                    LAG(m.date/1000000000+978307200) OVER (PARTITION BY m.handle_id ORDER BY m.date) as prev_ts
-            FROM message m
-            WHERE (m.date/1000000000+978307200)>{ts_start}
+            FROM message m WHERE (m.date/1000000000+978307200)>{ts_start}
             AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         )
-        SELECT
-            SUM(CASE WHEN is_from_me=1 THEN 1 ELSE 0 END) as you_started,
-            COUNT(*) as total
-        FROM convos
-        WHERE prev_ts IS NULL OR (ts - prev_ts) > 14400
+        SELECT SUM(CASE WHEN is_from_me=1 THEN 1 ELSE 0 END), COUNT(*)
+        FROM convos WHERE prev_ts IS NULL OR (ts - prev_ts) > 14400
     """)
-    if r and r[0][1] and r[0][1] > 0:
-        you_started = r[0][0] or 0
-        d['starter_pct'] = round((you_started / r[0][1]) * 100)
-    else:
-        d['starter_pct'] = 50
-    
-    # Personality
-    s = d['stats']
-    ratio = s[1] / (s[2] + 1)
-    if d['hour'] < 5 or d['hour'] > 22: d['personality'] = ("NOCTURNAL MENACE", "terrorizes people at ungodly hours")
-    elif d['resp'] < 5: d['personality'] = ("TERMINALLY ONLINE", "has never touched grass")
-    elif d['resp'] > 120: d['personality'] = ("TOO COOL TO REPLY", "leaves everyone on read")
-    elif ratio < 0.5: d['personality'] = ("POPULAR (ALLEGEDLY)", "everyone wants a piece")
-    elif ratio > 2: d['personality'] = ("THE YAPPER", "carries every conversation alone")
-    elif d['starter_pct'] > 65: d['personality'] = ("CONVERSATION STARTER", "always making the first move")
-    elif d['starter_pct'] < 35: d['personality'] = ("THE WAITER", "never texts first, ever")
-    else: d['personality'] = ("SUSPICIOUSLY NORMAL", "no notes. boring but stable.")
+    d['starter_pct'] = round((r[0][0] or 0) / max(r[0][1] or 1, 1) * 100) if r and r[0][1] else 50
 
-    # === CONTRIBUTION GRAPH DATA ===
-    # Get daily message counts for the year
-    daily_counts = q(f"""
+    # Daily counts
+    daily_counts = q_imessage(f"""
         SELECT DATE(datetime((date/1000000000+978307200),'unixepoch','localtime')) as d, COUNT(*) as c
-        FROM message
-        WHERE (date/1000000000+978307200)>{ts_start}
-        GROUP BY d
-        ORDER BY d
+        FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY d
     """)
     d['daily_counts'] = {row[0]: row[1] for row in daily_counts}
 
-    # Calculate streaks and stats
-    from datetime import datetime as dt, timedelta
-    if d['daily_counts']:
-        all_counts = list(d['daily_counts'].values())
-        d['max_daily'] = max(all_counts) if all_counts else 0
-        d['active_days'] = len([c for c in all_counts if c > 0])
-
-        # Top 5 most active days
-        sorted_days = sorted(d['daily_counts'].items(), key=lambda x: -x[1])[:5]
-        d['top_days'] = sorted_days
-
-        # Average messages per active day
-        d['avg_daily'] = round(sum(all_counts) / max(len(all_counts), 1))
-
-        # Find busiest month
-        monthly_counts = {}
-        for date_str, count in d['daily_counts'].items():
-            month_key = date_str[:7]  # "2025-03" format
-            monthly_counts[month_key] = monthly_counts.get(month_key, 0) + count
-        if monthly_counts:
-            busiest_month_key = max(monthly_counts, key=monthly_counts.get)
-            d['busiest_month'] = dt.strptime(busiest_month_key, '%Y-%m').strftime('%b')
-            d['busiest_month_count'] = monthly_counts[busiest_month_key]
-        else:
-            d['busiest_month'] = 'N/A'
-            d['busiest_month_count'] = 0
-
-        # Calculate quiet days (days with 0 messages in the year so far)
-        first_data_date = min(d['daily_counts'].keys())
-        last_data_date = max(d['daily_counts'].keys())
-        first_dt = dt.strptime(first_data_date, '%Y-%m-%d').date()
-        last_dt = dt.strptime(last_data_date, '%Y-%m-%d').date()
-        total_days_in_range = (last_dt - first_dt).days + 1
-        d['quiet_days'] = total_days_in_range - d['active_days']
-    else:
-        d['daily_counts'] = {}
-        d['max_daily'] = 0
-        d['active_days'] = 0
-        d['top_days'] = []
-        d['avg_daily'] = 0
-        d['busiest_month'] = 'N/A'
-        d['busiest_month_count'] = 0
-        d['quiet_days'] = 0
-
-    # === GROUP CHAT STATS ===
-    # Group chats have 2+ participants in chat_handle_join
+    # Group stats
     group_chat_cte = """
         WITH chat_participants AS (
-            SELECT chat_id, COUNT(*) as participant_count
-            FROM chat_handle_join
-            GROUP BY chat_id
+            SELECT chat_id, COUNT(*) as participant_count FROM chat_handle_join GROUP BY chat_id
         ),
         group_chats AS (
             SELECT chat_id FROM chat_participants WHERE participant_count >= 2
         ),
         group_messages AS (
-            SELECT m.ROWID as msg_id, cmj.chat_id
-            FROM message m
+            SELECT m.ROWID as msg_id, cmj.chat_id FROM message m
             JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
             WHERE cmj.chat_id IN (SELECT chat_id FROM group_chats)
         )
     """
-
-    # Group chat overview: count of groups, total messages, sent by you
-    r = q(f"""{group_chat_cte}
+    r = q_imessage(f"""{group_chat_cte}
         SELECT
             (SELECT COUNT(DISTINCT chat_id) FROM group_messages gm
-             JOIN message m ON gm.msg_id = m.ROWID
-             WHERE (m.date/1000000000+978307200)>{ts_start}) as group_count,
-            COUNT(*) as total_msgs,
-            SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) as sent
-        FROM message m
-        WHERE (m.date/1000000000+978307200)>{ts_start}
+             JOIN message m ON gm.msg_id = m.ROWID WHERE (m.date/1000000000+978307200)>{ts_start}),
+            COUNT(*), SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END)
+        FROM message m WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM group_messages)
     """)
-    if r and r[0][0]:
-        d['group_stats'] = {
-            'count': r[0][0] or 0,
-            'total': r[0][1] or 0,
-            'sent': r[0][2] or 0
-        }
-    else:
-        d['group_stats'] = {'count': 0, 'total': 0, 'sent': 0}
+    d['group_stats'] = {'count': r[0][0] or 0, 'total': r[0][1] or 0, 'sent': r[0][2] or 0} if r else {'count': 0, 'total': 0, 'sent': 0}
 
-    # Group chat leaderboard: top 5 most active group chats
-    # Get chat_id, display_name, message count, and participant handles for name fallback
-    r = q(f"""
+    # Group leaderboard
+    r = q_imessage(f"""
         WITH chat_participants AS (
-            SELECT chat_id, COUNT(*) as participant_count
-            FROM chat_handle_join
-            GROUP BY chat_id
+            SELECT chat_id, COUNT(*) as participant_count FROM chat_handle_join GROUP BY chat_id
         ),
         group_chats AS (
             SELECT chat_id FROM chat_participants WHERE participant_count >= 2
         ),
         group_messages AS (
-            SELECT m.ROWID as msg_id, cmj.chat_id
-            FROM message m
+            SELECT m.ROWID as msg_id, cmj.chat_id FROM message m
             JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
             WHERE cmj.chat_id IN (SELECT chat_id FROM group_chats)
             AND (m.date/1000000000+978307200)>{ts_start}
         )
-        SELECT
-            c.ROWID as chat_id,
-            c.display_name,
-            COUNT(*) as msg_count,
-            (SELECT COUNT(*) FROM chat_handle_join WHERE chat_id = c.ROWID) as participant_count
-        FROM chat c
-        JOIN group_messages gm ON c.ROWID = gm.chat_id
-        GROUP BY c.ROWID
-        ORDER BY msg_count DESC
-        LIMIT 5
+        SELECT c.ROWID, c.display_name, COUNT(*),
+            (SELECT COUNT(*) FROM chat_handle_join WHERE chat_id = c.ROWID)
+        FROM chat c JOIN group_messages gm ON c.ROWID = gm.chat_id
+        GROUP BY c.ROWID ORDER BY 3 DESC LIMIT 10
     """)
     d['group_leaderboard'] = []
     for row in r:
         chat_id, display_name, msg_count, participant_count = row
-        if display_name:
-            name = display_name
-        else:
-            # Get first 2 participant names for fallback
-            handles = q(f"""
-                SELECT h.id FROM chat_handle_join chj
-                JOIN handle h ON chj.handle_id = h.ROWID
-                WHERE chj.chat_id = {chat_id}
-                LIMIT 2
-            """)
-            name = handles  # Will be resolved to names in gen_html
-        d['group_leaderboard'].append({
-            'chat_id': chat_id,
-            'name': name,
-            'msg_count': msg_count,
-            'participant_count': participant_count
-        })
+        name = display_name if display_name else f"Group ({participant_count} people)"
+        d['group_leaderboard'].append({'name': name, 'msg_count': msg_count})
 
     return d
 
-def gen_html(d, contacts, path):
+def analyze_whatsapp(ts_start, ts_jun):
+    """Analyze WhatsApp data and return stats dict."""
+    d = {}
+
+    one_on_one_cte = """
+        WITH dm_sessions AS (
+            SELECT Z_PK, ZCONTACTJID FROM ZWACHATSESSION WHERE ZSESSIONTYPE = 0
+        ),
+        dm_messages AS (
+            SELECT m.Z_PK as msg_id, m.ZCHATSESSION, s.ZCONTACTJID
+            FROM ZWAMESSAGE m JOIN dm_sessions s ON m.ZCHATSESSION = s.Z_PK
+        )
+    """
+
+    # Stats
+    raw_stats = q_whatsapp(f"""{one_on_one_cte}
+        SELECT COUNT(*), SUM(CASE WHEN m.ZISFROMME=1 THEN 1 ELSE 0 END), SUM(CASE WHEN m.ZISFROMME=0 THEN 1 ELSE 0 END), COUNT(DISTINCT dm.ZCONTACTJID)
+        FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start}
+    """)[0]
+    d['stats'] = (raw_stats[0] or 0, raw_stats[1] or 0, raw_stats[2] or 0, raw_stats[3] or 0)
+
+    # Top contacts
+    d['top'] = q_whatsapp(f"""{one_on_one_cte}
+        SELECT dm.ZCONTACTJID, COUNT(*) t, SUM(CASE WHEN m.ZISFROMME=1 THEN 1 ELSE 0 END), SUM(CASE WHEN m.ZISFROMME=0 THEN 1 ELSE 0 END)
+        FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start} GROUP BY dm.ZCONTACTJID ORDER BY t DESC LIMIT 20
+    """)
+
+    # Late night
+    d['late'] = q_whatsapp(f"""{one_on_one_cte}
+        SELECT dm.ZCONTACTJID, COUNT(*) n FROM ZWAMESSAGE m
+        JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start}
+        AND CAST(strftime('%H',datetime(m.ZMESSAGEDATE+{COCOA_OFFSET},'unixepoch','localtime')) AS INT)<5
+        GROUP BY dm.ZCONTACTJID HAVING n>5 ORDER BY n DESC LIMIT 10
+    """)
+
+    # Peak hour
+    r = q_whatsapp(f"SELECT CAST(strftime('%H',datetime(ZMESSAGEDATE+{COCOA_OFFSET},'unixepoch','localtime')) AS INT) h, COUNT(*) c FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} GROUP BY h ORDER BY c DESC LIMIT 1")
+    d['hour'] = r[0][0] if r else 12
+
+    # Peak day
+    days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+    r = q_whatsapp(f"SELECT CAST(strftime('%w',datetime(ZMESSAGEDATE+{COCOA_OFFSET},'unixepoch','localtime')) AS INT) d, COUNT(*) FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} GROUP BY d ORDER BY 2 DESC LIMIT 1")
+    d['day'] = days[r[0][0]] if r else '???'
+
+    # Ghosted
+    d['ghosted'] = q_whatsapp(f"""{one_on_one_cte}
+        SELECT dm.ZCONTACTJID, SUM(CASE WHEN m.ZISFROMME=0 AND m.ZMESSAGEDATE<{ts_jun} THEN 1 ELSE 0 END) b, SUM(CASE WHEN m.ZISFROMME=0 AND m.ZMESSAGEDATE>={ts_jun} THEN 1 ELSE 0 END) a
+        FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start} GROUP BY dm.ZCONTACTJID HAVING b>10 AND a<3 ORDER BY b DESC LIMIT 10
+    """)
+
+    # Heating up
+    d['heating'] = q_whatsapp(f"""{one_on_one_cte}
+        SELECT dm.ZCONTACTJID, SUM(CASE WHEN m.ZMESSAGEDATE<{ts_jun} THEN 1 ELSE 0 END) h1, SUM(CASE WHEN m.ZMESSAGEDATE>={ts_jun} THEN 1 ELSE 0 END) h2
+        FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start} GROUP BY dm.ZCONTACTJID HAVING h1>20 AND h2>h1*1.5 ORDER BY (h2-h1) DESC LIMIT 10
+    """)
+
+    # Biggest fan
+    d['fan'] = q_whatsapp(f"""{one_on_one_cte}
+        SELECT dm.ZCONTACTJID, SUM(CASE WHEN m.ZISFROMME=0 THEN 1 ELSE 0 END) t, SUM(CASE WHEN m.ZISFROMME=1 THEN 1 ELSE 0 END) y
+        FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start} GROUP BY dm.ZCONTACTJID HAVING t>y*2 AND (t+y)>100 ORDER BY (t*1.0/NULLIF(y,0)) DESC LIMIT 10
+    """)
+
+    # Simp
+    d['simp'] = q_whatsapp(f"""{one_on_one_cte}
+        SELECT dm.ZCONTACTJID, SUM(CASE WHEN m.ZISFROMME=1 THEN 1 ELSE 0 END) y, SUM(CASE WHEN m.ZISFROMME=0 THEN 1 ELSE 0 END) t
+        FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+        WHERE m.ZMESSAGEDATE>{ts_start} GROUP BY dm.ZCONTACTJID HAVING y>t*2 AND (t+y)>100 ORDER BY (y*1.0/NULLIF(t,0)) DESC LIMIT 10
+    """)
+
+    # Response time
+    r = q_whatsapp(f"""
+        WITH dm_sessions AS (
+            SELECT Z_PK, ZCONTACTJID FROM ZWACHATSESSION WHERE ZSESSIONTYPE = 0
+        ),
+        dm_messages AS (
+            SELECT m.Z_PK as msg_id, m.ZCHATSESSION FROM ZWAMESSAGE m
+            JOIN dm_sessions s ON m.ZCHATSESSION = s.Z_PK
+        ),
+        g AS (
+            SELECT m.ZMESSAGEDATE ts, m.ZISFROMME, m.ZCHATSESSION,
+                   LAG(m.ZMESSAGEDATE) OVER (PARTITION BY m.ZCHATSESSION ORDER BY m.ZMESSAGEDATE) pt,
+                   LAG(m.ZISFROMME) OVER (PARTITION BY m.ZCHATSESSION ORDER BY m.ZMESSAGEDATE) pf
+            FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+            WHERE m.ZMESSAGEDATE>{ts_start}
+        )
+        SELECT AVG(ts-pt)/60.0 FROM g
+        WHERE ZISFROMME=1 AND pf=0 AND (ts-pt)<86400 AND (ts-pt)>10
+    """)
+    d['resp'] = int(r[0][0] or 30)
+
+    # Emojis
+    emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
+    counts = {}
+    for e in emojis:
+        r = q_whatsapp(f"SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZTEXT LIKE '%{e}%' AND ZMESSAGEDATE>{ts_start} AND ZISFROMME=1")
+        counts[e] = r[0][0]
+    d['emoji'] = counts
+
+    # Words
+    r = q_whatsapp(f"""
+        SELECT COUNT(*), COALESCE(SUM(LENGTH(ZTEXT) - LENGTH(REPLACE(ZTEXT, ' ', ''))), 0)
+        FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} AND ZISFROMME=1
+        AND ZTEXT IS NOT NULL AND LENGTH(ZTEXT) > 0
+    """)
+    d['words'] = (r[0][0] or 0) + (r[0][1] or 0)
+
+    # Busiest day
+    r = q_whatsapp(f"SELECT DATE(datetime(ZMESSAGEDATE+{COCOA_OFFSET},'unixepoch','localtime')) d, COUNT(*) c FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} GROUP BY d ORDER BY c DESC LIMIT 1")
+    d['busiest_day'] = (r[0][0], r[0][1]) if r else None
+
+    # Starter %
+    r = q_whatsapp(f"""
+        WITH dm_sessions AS (
+            SELECT Z_PK, ZCONTACTJID FROM ZWACHATSESSION WHERE ZSESSIONTYPE = 0
+        ),
+        dm_messages AS (
+            SELECT m.Z_PK as msg_id, m.ZCHATSESSION FROM ZWAMESSAGE m
+            JOIN dm_sessions s ON m.ZCHATSESSION = s.Z_PK
+        ),
+        convos AS (
+            SELECT m.ZISFROMME, m.ZMESSAGEDATE as ts,
+                   LAG(m.ZMESSAGEDATE) OVER (PARTITION BY m.ZCHATSESSION ORDER BY m.ZMESSAGEDATE) as prev_ts
+            FROM ZWAMESSAGE m JOIN dm_messages dm ON m.Z_PK = dm.msg_id
+            WHERE m.ZMESSAGEDATE>{ts_start}
+        )
+        SELECT SUM(CASE WHEN ZISFROMME=1 THEN 1 ELSE 0 END), COUNT(*)
+        FROM convos WHERE prev_ts IS NULL OR (ts - prev_ts) > 14400
+    """)
+    d['starter_pct'] = round((r[0][0] or 0) / max(r[0][1] or 1, 1) * 100) if r and r[0][1] else 50
+
+    # Daily counts
+    daily_counts = q_whatsapp(f"""
+        SELECT DATE(datetime(ZMESSAGEDATE+{COCOA_OFFSET},'unixepoch','localtime')) as d, COUNT(*) as c
+        FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} GROUP BY d ORDER BY d
+    """)
+    d['daily_counts'] = {row[0]: row[1] for row in daily_counts}
+
+    # Group stats
+    group_chat_cte = """
+        WITH group_sessions AS (
+            SELECT Z_PK FROM ZWACHATSESSION WHERE ZSESSIONTYPE = 1
+        ),
+        group_messages AS (
+            SELECT m.Z_PK as msg_id, m.ZCHATSESSION FROM ZWAMESSAGE m
+            JOIN group_sessions s ON m.ZCHATSESSION = s.Z_PK
+        )
+    """
+    r = q_whatsapp(f"""{group_chat_cte}
+        SELECT
+            (SELECT COUNT(DISTINCT gm.ZCHATSESSION) FROM group_messages gm
+             JOIN ZWAMESSAGE m ON m.Z_PK = gm.msg_id WHERE m.ZMESSAGEDATE>{ts_start}),
+            COUNT(*), SUM(CASE WHEN m.ZISFROMME=1 THEN 1 ELSE 0 END)
+        FROM ZWAMESSAGE m WHERE m.ZMESSAGEDATE>{ts_start}
+        AND m.Z_PK IN (SELECT msg_id FROM group_messages)
+    """)
+    d['group_stats'] = {'count': r[0][0] or 0, 'total': r[0][1] or 0, 'sent': r[0][2] or 0} if r else {'count': 0, 'total': 0, 'sent': 0}
+
+    # Group leaderboard
+    r = q_whatsapp(f"""
+        WITH group_sessions AS (
+            SELECT Z_PK, ZPARTNERNAME FROM ZWACHATSESSION WHERE ZSESSIONTYPE = 1
+        )
+        SELECT s.Z_PK, s.ZPARTNERNAME, COUNT(*)
+        FROM ZWAMESSAGE m JOIN group_sessions s ON m.ZCHATSESSION = s.Z_PK
+        WHERE m.ZMESSAGEDATE>{ts_start} GROUP BY s.Z_PK ORDER BY 3 DESC LIMIT 10
+    """)
+    d['group_leaderboard'] = []
+    for row in r:
+        chat_id, name, msg_count = row
+        d['group_leaderboard'].append({'name': name or "Unnamed Group", 'msg_count': msg_count})
+
+    return d
+
+def merge_data(imessage_data, whatsapp_data, imessage_contacts, whatsapp_contacts, has_imessage, has_whatsapp):
+    """Merge iMessage and WhatsApp data into combined stats."""
+    d = {}
+
+    # Helper to create unified contact lookup
+    def get_name(handle, source='imessage'):
+        if source == 'imessage':
+            return get_name_imessage(handle, imessage_contacts)
+        else:
+            return get_name_whatsapp(handle, whatsapp_contacts)
+
+    # Merge stats
+    im_stats = imessage_data.get('stats', (0, 0, 0, 0)) if has_imessage else (0, 0, 0, 0)
+    wa_stats = whatsapp_data.get('stats', (0, 0, 0, 0)) if has_whatsapp else (0, 0, 0, 0)
+    d['stats'] = (
+        im_stats[0] + wa_stats[0],  # total
+        im_stats[1] + wa_stats[1],  # sent
+        im_stats[2] + wa_stats[2],  # received
+        im_stats[3] + wa_stats[3],  # unique contacts
+    )
+    d['imessage_stats'] = im_stats
+    d['whatsapp_stats'] = wa_stats
+
+    # Merge top contacts (with source tracking)
+    top_combined = []
+    if has_imessage:
+        for h, t, s, r in imessage_data.get('top', []):
+            name = get_name(h, 'imessage')
+            top_combined.append({'name': name, 'total': t, 'sent': s, 'received': r, 'source': 'imessage', 'handle': h})
+    if has_whatsapp:
+        for h, t, s, r in whatsapp_data.get('top', []):
+            name = get_name(h, 'whatsapp')
+            top_combined.append({'name': name, 'total': t, 'sent': s, 'received': r, 'source': 'whatsapp', 'handle': h})
+
+    # Sort by total and dedupe by name (keep higher count)
+    name_counts = {}
+    for entry in top_combined:
+        name = entry['name']
+        if name not in name_counts or entry['total'] > name_counts[name]['total']:
+            name_counts[name] = entry
+    d['top'] = sorted(name_counts.values(), key=lambda x: -x['total'])[:10]
+
+    # Merge late night
+    late_combined = []
+    if has_imessage:
+        for h, n in imessage_data.get('late', []):
+            late_combined.append((get_name(h, 'imessage'), n, 'imessage'))
+    if has_whatsapp:
+        for h, n in whatsapp_data.get('late', []):
+            late_combined.append((get_name(h, 'whatsapp'), n, 'whatsapp'))
+    name_counts = {}
+    for name, count, source in late_combined:
+        if name not in name_counts or count > name_counts[name][1]:
+            name_counts[name] = (name, count, source)
+    d['late'] = sorted(name_counts.values(), key=lambda x: -x[1])[:5]
+
+    # Use dominant platform for hour/day (whichever has more messages)
+    if im_stats[0] >= wa_stats[0] and has_imessage:
+        d['hour'] = imessage_data.get('hour', 12)
+        d['day'] = imessage_data.get('day', '???')
+    elif has_whatsapp:
+        d['hour'] = whatsapp_data.get('hour', 12)
+        d['day'] = whatsapp_data.get('day', '???')
+    else:
+        d['hour'] = 12
+        d['day'] = '???'
+
+    # Merge ghosted
+    ghosted_combined = []
+    if has_imessage:
+        for h, b, a in imessage_data.get('ghosted', []):
+            ghosted_combined.append((get_name(h, 'imessage'), b, a))
+    if has_whatsapp:
+        for h, b, a in whatsapp_data.get('ghosted', []):
+            ghosted_combined.append((get_name(h, 'whatsapp'), b, a))
+    d['ghosted'] = sorted(ghosted_combined, key=lambda x: -x[1])[:5]
+
+    # Merge heating
+    heating_combined = []
+    if has_imessage:
+        for h, h1, h2 in imessage_data.get('heating', []):
+            heating_combined.append((get_name(h, 'imessage'), h1, h2))
+    if has_whatsapp:
+        for h, h1, h2 in whatsapp_data.get('heating', []):
+            heating_combined.append((get_name(h, 'whatsapp'), h1, h2))
+    d['heating'] = sorted(heating_combined, key=lambda x: -(x[2] - x[1]))[:5]
+
+    # Merge fans
+    fan_combined = []
+    if has_imessage:
+        for h, t, y in imessage_data.get('fan', []):
+            fan_combined.append((get_name(h, 'imessage'), t, y))
+    if has_whatsapp:
+        for h, t, y in whatsapp_data.get('fan', []):
+            fan_combined.append((get_name(h, 'whatsapp'), t, y))
+    d['fan'] = sorted(fan_combined, key=lambda x: -(x[1] / max(x[2], 1)))[:5]
+
+    # Merge simps
+    simp_combined = []
+    if has_imessage:
+        for h, y, t in imessage_data.get('simp', []):
+            simp_combined.append((get_name(h, 'imessage'), y, t))
+    if has_whatsapp:
+        for h, y, t in whatsapp_data.get('simp', []):
+            simp_combined.append((get_name(h, 'whatsapp'), y, t))
+    d['simp'] = sorted(simp_combined, key=lambda x: -(x[1] / max(x[2], 1)))[:5]
+
+    # Weighted average response time
+    im_resp = imessage_data.get('resp', 30) if has_imessage else 30
+    wa_resp = whatsapp_data.get('resp', 30) if has_whatsapp else 30
+    im_weight = im_stats[0]
+    wa_weight = wa_stats[0]
+    total_weight = im_weight + wa_weight
+    if total_weight > 0:
+        d['resp'] = int((im_resp * im_weight + wa_resp * wa_weight) / total_weight)
+    else:
+        d['resp'] = 30
+
+    # Merge emoji counts
+    emoji_counts = {}
+    if has_imessage:
+        for e, c in imessage_data.get('emoji', {}).items():
+            emoji_counts[e] = emoji_counts.get(e, 0) + c
+    if has_whatsapp:
+        for e, c in whatsapp_data.get('emoji', {}).items():
+            emoji_counts[e] = emoji_counts.get(e, 0) + c
+    d['emoji'] = sorted(emoji_counts.items(), key=lambda x: -x[1])[:5]
+
+    # Merge words
+    im_words = imessage_data.get('words', 0) if has_imessage else 0
+    wa_words = whatsapp_data.get('words', 0) if has_whatsapp else 0
+    d['words'] = im_words + wa_words
+
+    # Busiest day (pick the one with more messages)
+    im_busiest = imessage_data.get('busiest_day') if has_imessage else None
+    wa_busiest = whatsapp_data.get('busiest_day') if has_whatsapp else None
+    if im_busiest and wa_busiest:
+        d['busiest_day'] = im_busiest if im_busiest[1] >= wa_busiest[1] else wa_busiest
+    else:
+        d['busiest_day'] = im_busiest or wa_busiest
+
+    # Weighted starter %
+    im_starter = imessage_data.get('starter_pct', 50) if has_imessage else 50
+    wa_starter = whatsapp_data.get('starter_pct', 50) if has_whatsapp else 50
+    if total_weight > 0:
+        d['starter_pct'] = int((im_starter * im_weight + wa_starter * wa_weight) / total_weight)
+    else:
+        d['starter_pct'] = 50
+
+    # Merge daily counts
+    daily_counts = {}
+    if has_imessage:
+        for date, count in imessage_data.get('daily_counts', {}).items():
+            daily_counts[date] = daily_counts.get(date, 0) + count
+    if has_whatsapp:
+        for date, count in whatsapp_data.get('daily_counts', {}).items():
+            daily_counts[date] = daily_counts.get(date, 0) + count
+    d['daily_counts'] = daily_counts
+
+    # Calculate merged daily stats
+    if daily_counts:
+        all_counts = list(daily_counts.values())
+        d['max_daily'] = max(all_counts)
+        d['active_days'] = len([c for c in all_counts if c > 0])
+        d['avg_daily'] = round(sum(all_counts) / max(len(all_counts), 1))
+
+        monthly_counts = {}
+        for date_str, count in daily_counts.items():
+            month_key = date_str[:7]
+            monthly_counts[month_key] = monthly_counts.get(month_key, 0) + count
+        if monthly_counts:
+            busiest_month_key = max(monthly_counts, key=monthly_counts.get)
+            d['busiest_month'] = datetime.strptime(busiest_month_key, '%Y-%m').strftime('%b')
+        else:
+            d['busiest_month'] = 'N/A'
+
+        first_dt = datetime.strptime(min(daily_counts.keys()), '%Y-%m-%d').date()
+        last_dt = datetime.strptime(max(daily_counts.keys()), '%Y-%m-%d').date()
+        total_days = (last_dt - first_dt).days + 1
+        d['quiet_days'] = total_days - d['active_days']
+    else:
+        d['max_daily'] = 0
+        d['active_days'] = 0
+        d['avg_daily'] = 0
+        d['busiest_month'] = 'N/A'
+        d['quiet_days'] = 0
+
+    # Merge group stats
+    im_groups = imessage_data.get('group_stats', {'count': 0, 'total': 0, 'sent': 0}) if has_imessage else {'count': 0, 'total': 0, 'sent': 0}
+    wa_groups = whatsapp_data.get('group_stats', {'count': 0, 'total': 0, 'sent': 0}) if has_whatsapp else {'count': 0, 'total': 0, 'sent': 0}
+    d['group_stats'] = {
+        'count': im_groups['count'] + wa_groups['count'],
+        'total': im_groups['total'] + wa_groups['total'],
+        'sent': im_groups['sent'] + wa_groups['sent']
+    }
+
+    # Merge group leaderboard
+    group_lb = []
+    if has_imessage:
+        for g in imessage_data.get('group_leaderboard', []):
+            group_lb.append({'name': g['name'], 'msg_count': g['msg_count'], 'source': 'imessage'})
+    if has_whatsapp:
+        for g in whatsapp_data.get('group_leaderboard', []):
+            group_lb.append({'name': g['name'], 'msg_count': g['msg_count'], 'source': 'whatsapp'})
+    d['group_leaderboard'] = sorted(group_lb, key=lambda x: -x['msg_count'])[:5]
+
+    # Personality (based on combined stats)
+    s = d['stats']
+    ratio = s[1] / (s[2] + 1)
+    if d['hour'] < 5 or d['hour'] > 22:
+        d['personality'] = ("NOCTURNAL MENACE", "terrorizes people at ungodly hours")
+    elif d['resp'] < 5:
+        d['personality'] = ("TERMINALLY ONLINE", "has never touched grass")
+    elif d['resp'] > 120:
+        d['personality'] = ("TOO COOL TO REPLY", "leaves everyone on read")
+    elif ratio < 0.5:
+        d['personality'] = ("POPULAR (ALLEGEDLY)", "everyone wants a piece")
+    elif ratio > 2:
+        d['personality'] = ("THE YAPPER", "carries every conversation alone")
+    elif d['starter_pct'] > 65:
+        d['personality'] = ("CONVERSATION STARTER", "always making the first move")
+    elif d['starter_pct'] < 35:
+        d['personality'] = ("THE WAITER", "never texts first, ever")
+    else:
+        d['personality'] = ("SUSPICIOUSLY NORMAL", "no notes. boring but stable.")
+
+    return d
+
+def gen_html(d, path, year, has_imessage, has_whatsapp):
+    """Generate the combined wrapped HTML report."""
     s = d['stats']
     top = d['top']
-    n = lambda h: get_name(h, contacts)
     ptype, proast = d['personality']
     hr = d['hour']
-    # Format hour: 0->12AM, 1-11->AM, 12->12PM, 13-23->PM
+
+    # Format hour
     if hr == 0:
         hr_str = "12AM"
     elif hr < 12:
@@ -503,40 +857,54 @@ def gen_html(d, contacts, path):
         hr_str = "12PM"
     else:
         hr_str = f"{hr-12}PM"
-    
+
     # Format busiest day
-    from datetime import datetime as dt
     if d['busiest_day']:
-        bd = dt.strptime(d['busiest_day'][0], '%Y-%m-%d')
+        bd = datetime.strptime(d['busiest_day'][0], '%Y-%m-%d')
         busiest_str = bd.strftime('%b %d')
         busiest_count = d['busiest_day'][1]
     else:
         busiest_str = "N/A"
         busiest_count = 0
 
-    # Calculate days elapsed in the year for accurate per-day stats
-    now = dt.now()
-    year_start = dt(now.year, 1, 1)
-    days_elapsed = max(1, (now - year_start).days)  # At least 1 to avoid div by zero
+    # Calculate days elapsed
+    now = datetime.now()
+    year_start = datetime(int(year), 1, 1)
+    days_elapsed = max(1, (now - year_start).days)
     msgs_per_day = s[0] // days_elapsed
+
+    words = d['words']
+    words_display = f"{words // 1000:,}K" if words >= 1000 else f"{words:,}"
+
+    # Platform breakdown
+    im_stats = d.get('imessage_stats', (0, 0, 0, 0))
+    wa_stats = d.get('whatsapp_stats', (0, 0, 0, 0))
 
     slides = []
 
     # Slide 1: Intro
-    slides.append('''
+    platforms_text = []
+    if has_imessage:
+        platforms_text.append("iMessage")
+    if has_whatsapp:
+        platforms_text.append("WhatsApp")
+    platform_str = " + ".join(platforms_text)
+
+    slides.append(f'''
     <div class="slide intro">
-        <div class="slide-icon">📱</div>
-        <h1>iMESSAGE<br>WRAPPED</h1>
-        <p class="subtitle">your 2025 texting habits, exposed</p>
+        <div class="slide-icon">📱💬</div>
+        <h1>TEXTS<br>WRAPPED</h1>
+        <p class="subtitle">{platform_str}</p>
+        <p class="subtitle2">your {year} texting habits, exposed</p>
         <div class="tap-hint">click anywhere to start →</div>
     </div>''')
 
-    # Slide 2: Total messages
+    # Slide 2: Total messages with platform breakdown
     slides.append(f'''
     <div class="slide">
         <div class="slide-label">// TOTAL DAMAGE</div>
-        <div class="big-number green">{s[0]:,}</div>
-        <div class="slide-text">messages this year</div>
+        <div class="big-number gradient">{s[0]:,}</div>
+        <div class="slide-text">messages across all platforms</div>
         <div class="stat-grid">
             <div class="stat-item"><span class="stat-num">{msgs_per_day}</span><span class="stat-lbl">/day</span></div>
             <div class="stat-item"><span class="stat-num">{s[1]:,}</span><span class="stat-lbl">sent</span></div>
@@ -545,11 +913,35 @@ def gen_html(d, contacts, path):
         <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_total_messages.png', this)">📸 Save</button>
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
-    
-    # Slide 3: Words sent
-    words = d['words']
-    words_display = f"{words // 1000:,}K" if words >= 1000 else f"{words:,}"
-    pages = max(1, words // 250)  # At least 1 page
+
+    # Slide 3: Platform breakdown
+    if has_imessage and has_whatsapp:
+        im_pct = round(im_stats[0] / max(s[0], 1) * 100)
+        wa_pct = 100 - im_pct
+        slides.append(f'''
+        <div class="slide platform-breakdown">
+            <div class="slide-label">// PLATFORM SPLIT</div>
+            <div class="slide-text">where you text the most</div>
+            <div class="platform-bars">
+                <div class="platform-bar imessage" style="width:{max(im_pct, 15)}%">
+                    <span class="platform-icon">📱</span>
+                    <span class="platform-name">iMessage</span>
+                    <span class="platform-pct">{im_pct}%</span>
+                    <span class="platform-count">{im_stats[0]:,}</span>
+                </div>
+                <div class="platform-bar whatsapp" style="width:{max(wa_pct, 15)}%">
+                    <span class="platform-icon">💬</span>
+                    <span class="platform-name">WhatsApp</span>
+                    <span class="platform-pct">{wa_pct}%</span>
+                    <span class="platform-count">{wa_stats[0]:,}</span>
+                </div>
+            </div>
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_platform_split.png', this)">📸 Save</button>
+            <div class="slide-watermark">wrap2025.com</div>
+        </div>''')
+
+    # Slide 4: Words sent
+    pages = max(1, words // 250)
     slides.append(f'''
     <div class="slide">
         <div class="slide-label">// WORD COUNT</div>
@@ -560,43 +952,34 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 4: Contribution Graph (GitHub-style activity heatmap) - Year overview
+    # Slide 5: Contribution Graph
     if d['daily_counts']:
-        from datetime import datetime as dt, date as ddate, timedelta
-        today = dt.now().date()
-        year = int(d.get('year', today.year))
-        year_start = ddate(year, 1, 1)
-        # Show up to today when looking at the current year, otherwise end on Dec 31 of that year
-        year_end = today if year == today.year else ddate(year, 12, 31)
+        from datetime import date as ddate
+        today = datetime.now().date()
+        year_int = int(year)
+        year_start = ddate(year_int, 1, 1)
+        year_end = today if year_int == today.year else ddate(year_int, 12, 31)
 
-        # Build the calendar grid (weeks x 7 days, GitHub style Sunday→Saturday)
         cal_cells = []
-
-        # Find the Sunday on or before Jan 1
         first_day = year_start - timedelta(days=(year_start.weekday() + 1) % 7)
-        # Find the Saturday of the last week that contains year_end
         last_day = year_end + timedelta(days=(5 - year_end.weekday()) % 7)
 
         current_date = first_day
         max_count = max(d['daily_counts'].values()) if d['daily_counts'] else 1
-
-        # Month labels - track when months start
         month_labels = []
         last_month = None
-
         week_idx = 0
+
         while current_date <= last_day:
             week_cells = []
-            for _ in range(7):  # Sun to Sat
+            for _ in range(7):
                 date_str = current_date.strftime('%Y-%m-%d')
                 count = d['daily_counts'].get(date_str, 0)
 
-                # Track month changes for labels
                 if (year_start <= current_date <= year_end) and current_date.month != last_month:
                     month_labels.append((week_idx, current_date.strftime('%b')))
                     last_month = current_date.month
 
-                # Determine intensity level (0-4 like GitHub)
                 if count == 0:
                     level = 0
                 elif count <= max_count * 0.25:
@@ -608,43 +991,31 @@ def gen_html(d, contacts, path):
                 else:
                     level = 4
 
-                # Only show cells for the target year
                 in_year = year_start <= current_date <= year_end
                 week_cells.append((date_str, count, level, in_year))
                 current_date += timedelta(days=1)
 
             cal_cells.append(week_cells)
             week_idx += 1
-            if week_idx > 60:  # Safety limit
+            if week_idx > 60:
                 break
 
-        # Build the HTML grid with proper structure
         contrib_html = '<div class="contrib-graph">'
         contrib_html += '<div class="contrib-container">'
-
-        # Y-axis: Day labels
         contrib_html += '<div class="contrib-days"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>'
-
         contrib_html += '<div class="contrib-main">'
-
-        # X-axis: Month labels - position based on week index, each week is 12px (10px cell + 2px gap)
         contrib_html += '<div class="contrib-months">'
         for week_num, month_name in month_labels:
-            # Position each month label at the start of its first week
-            left_px = week_num * 12  # 10px cell + 2px gap
+            left_px = week_num * 12
             contrib_html += f'<span style="position:absolute;left:{left_px}px">{month_name}</span>'
         contrib_html += '</div>'
-
-        # Grid of cells
         contrib_html += '<div class="contrib-grid">'
         for week in cal_cells:
             contrib_html += '<div class="contrib-week">'
             for date_str, count, level, in_year in week:
                 if in_year:
-                    # Format date nicely for tooltip (e.g., "Dec 7, 2025")
-                    from datetime import datetime as dt_parse
                     try:
-                        date_obj = dt_parse.strptime(date_str, '%Y-%m-%d')
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
                         formatted_date = date_obj.strftime('%b %d, %Y')
                     except:
                         formatted_date = date_str
@@ -653,12 +1024,7 @@ def gen_html(d, contacts, path):
                 else:
                     contrib_html += '<div class="contrib-cell empty"></div>'
             contrib_html += '</div>'
-        contrib_html += '</div>'
-
-        contrib_html += '</div>'  # close contrib-main
-        contrib_html += '</div>'  # close contrib-container
-
-        # Legend
+        contrib_html += '</div></div></div>'
         contrib_html += '<div class="contrib-legend"><span>Less</span><div class="contrib-cell level-0"></div><div class="contrib-cell level-1"></div><div class="contrib-cell level-2"></div><div class="contrib-cell level-3"></div><div class="contrib-cell level-4"></div><span>More</span></div>'
         contrib_html += '</div>'
 
@@ -676,44 +1042,47 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 5: Your #1 (only if we have contacts)
+    # Slide 6: Your #1
     if top:
+        t = top[0]
+        source_icon = "📱" if t.get('source') == 'imessage' else "💬"
         slides.append(f'''
-        <div class="slide pink-bg">
+        <div class="slide gradient-bg">
             <div class="slide-label">// YOUR #1</div>
             <div class="slide-text">most texted person</div>
-            <div class="huge-name">{n(top[0][0])}</div>
-            <div class="big-number yellow">{top[0][1]:,}</div>
-            <div class="slide-text">messages</div>
+            <div class="huge-name">{t['name']}</div>
+            <div class="big-number yellow">{t['total']:,}</div>
+            <div class="slide-text">messages <span class="source-badge">{source_icon}</span></div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_your_number_one.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-        # Slide 5: Top 5
-        top5_html = ''.join([f'<div class="rank-item"><span class="rank-num">{i}</span><span class="rank-name">{n(h)}</span><span class="rank-count">{t:,}</span></div>' for i,(h,t,_,_) in enumerate(top[:5],1)])
+        # Slide 7: Top 5
+        top5_html = ''.join([
+            f'<div class="rank-item"><span class="rank-num">{i}</span><span class="rank-name">{t["name"]}</span><span class="rank-count">{t["total"]:,}</span><span class="source-icon">{"📱" if t.get("source") == "imessage" else "💬"}</span></div>'
+            for i, t in enumerate(top[:5], 1)
+        ])
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// INNER CIRCLE</div>
-            <div class="slide-text">your top 5</div>
+            <div class="slide-text">your top 5 across all platforms</div>
             <div class="rank-list">{top5_html}</div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_inner_circle.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
-    
-    # === GROUP CHAT SLIDES (after top 5, before personality) ===
+
+    # Group chat slides
     gs = d['group_stats']
     if gs['count'] > 0:
-        # Calculate lurker vs contributor ratio
         lurker_pct = round((1 - gs['sent'] / max(gs['total'], 1)) * 100)
         lurker_label = "LURKER" if lurker_pct > 60 else "CONTRIBUTOR" if lurker_pct < 40 else "BALANCED"
         lurker_class = "yellow" if lurker_pct > 60 else "green" if lurker_pct < 40 else "cyan"
 
-        # Slide 6: Group Chat Overview
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// GROUP CHATS</div>
             <div class="slide-icon">👥</div>
-            <div class="big-number green">{gs['count']}</div>
+            <div class="big-number gradient">{gs['count']}</div>
             <div class="slide-text">active group chats</div>
             <div class="stat-grid">
                 <div class="stat-item"><span class="stat-num">{gs['total']:,}</span><span class="stat-lbl">total msgs</span></div>
@@ -725,23 +1094,9 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-        # Slide 7: Group Chat Leaderboard
         if d['group_leaderboard']:
-            # Helper to format group name
-            def format_group_name(gc):
-                if isinstance(gc['name'], str):
-                    return gc['name']
-                else:
-                    # gc['name'] is a list of handle tuples from SQL
-                    handles = gc['name']
-                    names = [n(h[0]) for h in handles[:2]]
-                    extra = gc['participant_count'] - len(names)
-                    if extra > 0:
-                        return f"{', '.join(names)} +{extra}"
-                    return ', '.join(names)
-
             gc_html = ''.join([
-                f'<div class="rank-item"><span class="rank-num">{i}</span><span class="rank-name">{format_group_name(gc)}</span><span class="rank-count">{gc["msg_count"]:,}</span></div>'
+                f'<div class="rank-item"><span class="rank-num">{i}</span><span class="rank-name">{gc["name"]}</span><span class="rank-count">{gc["msg_count"]:,}</span><span class="source-icon">{"📱" if gc.get("source") == "imessage" else "💬"}</span></div>'
                 for i, gc in enumerate(d['group_leaderboard'][:5], 1)
             ])
             slides.append(f'''
@@ -753,7 +1108,7 @@ def gen_html(d, contacts, path):
                 <div class="slide-watermark">wrap2025.com</div>
             </div>''')
 
-    # Slide 8: Personality
+    # Personality slide
     slides.append(f'''
     <div class="slide purple-bg">
         <div class="slide-label">// DIAGNOSIS</div>
@@ -764,7 +1119,7 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 9: Conversation Starter (Who texts first)
+    # Who texts first
     starter_label = "YOU START" if d['starter_pct'] > 50 else "THEY START"
     starter_class = "green" if d['starter_pct'] > 50 else "yellow"
     slides.append(f'''
@@ -778,7 +1133,7 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 10: Response time
+    # Response time
     resp_class = 'green' if d['resp'] < 10 else 'yellow' if d['resp'] < 60 else 'red'
     resp_label = "INSTANT" if d['resp'] < 10 else "NORMAL" if d['resp'] < 60 else "SLOW"
     slides.append(f'''
@@ -792,32 +1147,32 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 11: Peak hours
+    # Peak hours
     slides.append(f'''
     <div class="slide">
         <div class="slide-label">// PEAK HOURS</div>
         <div class="slide-text">most active</div>
-        <div class="big-number green">{hr_str}</div>
+        <div class="big-number gradient">{hr_str}</div>
         <div class="slide-text">on <span class="yellow">{d['day']}s</span></div>
         <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_peak_hours.png', this)">📸 Save</button>
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 12: 3AM Bestie
+    # 3AM Bestie
     if d['late']:
         ln = d['late'][0]
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// 3AM BESTIE</div>
             <div class="slide-icon">🌙</div>
-            <div class="huge-name cyan">{n(ln[0])}</div>
+            <div class="huge-name cyan">{ln[0]}</div>
             <div class="big-number yellow">{ln[1]}</div>
             <div class="slide-text">late night texts</div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_3am_bestie.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 13: Busiest Day
+    # Busiest Day
     if d['busiest_day']:
         slides.append(f'''
         <div class="slide">
@@ -830,37 +1185,37 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 14: Biggest fan
+    # Biggest fan
     if d['fan']:
         f = d['fan'][0]
-        ratio = round(f[1]/(f[2]+1), 1)
+        ratio = round(f[1] / (f[2] + 1), 1)
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// BIGGEST FAN</div>
             <div class="slide-text">texts you most</div>
-            <div class="huge-name orange">{n(f[0])}</div>
+            <div class="huge-name orange">{f[0]}</div>
             <div class="slide-text"><span class="big-number yellow" style="font-size:56px">{ratio}x</span> more than you</div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_biggest_fan.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 15: Down bad
+    # Down bad
     if d['simp']:
         si = d['simp'][0]
-        ratio = round(si[1]/(si[2]+1), 1)
+        ratio = round(si[1] / (si[2] + 1), 1)
         slides.append(f'''
         <div class="slide red-bg">
             <div class="slide-label">// DOWN BAD</div>
             <div class="slide-text">you simp for</div>
-            <div class="huge-name">{n(si[0])}</div>
+            <div class="huge-name">{si[0]}</div>
             <div class="slide-text">you text <span class="big-number yellow" style="font-size:56px">{ratio}x</span> more</div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_down_bad.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 16: Heating Up
+    # Heating Up
     if d['heating']:
-        heat_html = ''.join([f'<div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">{n(h)}</span><span class="rank-count green">+{h2-h1}</span></div>' for h,h1,h2 in d['heating'][:5]])
+        heat_html = ''.join([f'<div class="rank-item"><span class="rank-num">🔥</span><span class="rank-name">{h}</span><span class="rank-count green">+{h2-h1}</span></div>' for h, h1, h2 in d['heating'][:5]])
         slides.append(f'''
         <div class="slide orange-bg">
             <div class="slide-label">// HEATING UP</div>
@@ -870,9 +1225,9 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 17: Ghosted
+    # Ghosted
     if d['ghosted']:
-        ghost_html = ''.join([f'<div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">{n(h)}</span><span class="rank-count"><span class="green">{b}</span> → <span class="red">{a}</span></span></div>' for h,b,a in d['ghosted'][:5]])
+        ghost_html = ''.join([f'<div class="rank-item"><span class="rank-num">👻</span><span class="rank-name">{h}</span><span class="rank-count"><span class="green">{b}</span> → <span class="red">{a}</span></span></div>' for h, b, a in d['ghosted'][:5]])
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// GHOSTED</div>
@@ -883,7 +1238,7 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 18: Emojis
+    # Emojis
     if d['emoji'] and any(e[1] > 0 for e in d['emoji']):
         emo = '  '.join([e[0] for e in d['emoji'] if e[1] > 0])
         slides.append(f'''
@@ -895,20 +1250,24 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Final slide: Summary card
-    top3_names = ', '.join([n(h) for h,_,_,_ in top[:3]]) if top else "No contacts"
+    # Final slide: Summary
+    top3_names = ', '.join([t['name'] for t in top[:3]]) if top else "No contacts"
     slides.append(f'''
     <div class="slide summary-slide">
         <div class="summary-card" id="summaryCard">
             <div class="summary-header">
-                <span class="summary-logo">📱</span>
-                <span class="summary-title">iMESSAGE WRAPPED 2025</span>
+                <span class="summary-logo">📱💬</span>
+                <span class="summary-title">TEXTS WRAPPED {year}</span>
             </div>
             <div class="summary-hero">
                 <div class="summary-big-stat">
                     <span class="summary-big-num">{s[0]:,}</span>
                     <span class="summary-big-label">messages</span>
                 </div>
+            </div>
+            <div class="summary-platform-split">
+                <span class="summary-platform imessage">📱 {im_stats[0]:,}</span>
+                <span class="summary-platform whatsapp">💬 {wa_stats[0]:,}</span>
             </div>
             <div class="summary-stats">
                 <div class="summary-stat">
@@ -945,18 +1304,17 @@ def gen_html(d, contacts, path):
         </button>
         <div class="share-hint">share your damage</div>
     </div>''')
-    
+
     slides_html = ''.join(slides)
     num_slides = len(slides)
-    
-    # Favicon as base64 SVG
+
     favicon = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌯</text></svg>"
-    
+
     html = f'''<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>iMessage Wrapped 2025</title>
+<title>Texts Wrapped {year}</title>
 <link rel="icon" href="{favicon}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -975,6 +1333,8 @@ def gen_html(d, contacts, path):
     --pink: #f472b6;
     --orange: #fb923c;
     --purple: #a78bfa;
+    --imessage: #4ade80;
+    --whatsapp: #25D366;
     --font-pixel: 'Silkscreen', cursive;
     --font-mono: 'Azeret Mono', monospace;
     --font-body: 'Space Grotesk', sans-serif;
@@ -1003,13 +1363,14 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
     background:var(--bg);
 }}
 
-.slide.intro {{ background:linear-gradient(145deg,#12121f 0%,#1a1a2e 50%,#0f2847 100%); }}
-.slide.pink-bg {{ background:linear-gradient(145deg,#12121f 0%,#2d1a3d 100%); }}
+.slide.intro {{ background:linear-gradient(145deg,#12121f 0%,#1a2f1a 50%,#0f2847 100%); }}
+.slide.gradient-bg {{ background:linear-gradient(145deg,#12121f 0%,#1a2f1a 50%,#0d2f2f 100%); }}
 .slide.purple-bg {{ background:linear-gradient(145deg,#12121f 0%,#1f1a3d 100%); }}
 .slide.orange-bg {{ background:linear-gradient(145deg,#12121f 0%,#2d1f1a 100%); }}
 .slide.red-bg {{ background:linear-gradient(145deg,#12121f 0%,#2d1a1a 100%); }}
-.slide.summary-slide {{ background:linear-gradient(145deg,#0f2847 0%,#12121f 50%,#1a1a2e 100%); }}
-.slide.contrib-slide {{ background:linear-gradient(145deg,#12121f 0%,#0f1f2d 100%); padding:24px 16px 80px; }}
+.slide.summary-slide {{ background:linear-gradient(145deg,#1a2f1a 0%,#12121f 50%,#1a1a2e 100%); }}
+.slide.contrib-slide {{ background:linear-gradient(145deg,#12121f 0%,#0d1f1a 100%); padding:24px 16px 80px; }}
+.slide.platform-breakdown {{ background:linear-gradient(145deg,#12121f 0%,#1a2a1a 50%,#0d2f2f 100%); }}
 
 /* === CONTRIBUTION GRAPH STYLES === */
 .contrib-graph {{ display:flex; flex-direction:column; align-items:center; margin:20px auto; padding:0 8px; }}
@@ -1038,18 +1399,30 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .contrib-stat {{ display:flex; flex-direction:column; align-items:center; }}
 .contrib-stat-num {{ font-family:var(--font-mono); font-size:28px; font-weight:600; color:var(--green); }}
 .contrib-stat-lbl {{ font-size:11px; color:var(--muted); margin-top:4px; text-transform:uppercase; letter-spacing:0.5px; }}
-.top-days-list {{ display:flex; flex-direction:column; gap:8px; margin-top:16px; width:100%; max-width:300px; }}
-.top-day-item {{ display:flex; justify-content:space-between; padding:8px 12px; background:rgba(255,255,255,0.05); border-radius:6px; }}
-.top-day-date {{ color:var(--muted); font-size:14px; }}
-.top-day-count {{ font-family:var(--font-mono); font-size:14px; color:var(--green); font-weight:600; }}
+
+/* Platform breakdown slide */
+.platform-bars {{ display:flex; flex-direction:column; gap:16px; width:100%; max-width:500px; margin:32px 0; }}
+.platform-bar {{ display:flex; align-items:center; gap:12px; padding:20px 24px; border-radius:16px; min-width:120px; transition:all 0.3s; }}
+.platform-bar.imessage {{ background:linear-gradient(90deg, rgba(74,222,128,0.25), rgba(74,222,128,0.1)); border:2px solid rgba(74,222,128,0.4); }}
+.platform-bar.whatsapp {{ background:linear-gradient(90deg, rgba(37,211,102,0.25), rgba(37,211,102,0.1)); border:2px solid rgba(37,211,102,0.4); }}
+.platform-icon {{ font-size:28px; flex-shrink:0; }}
+.platform-name {{ font-size:16px; text-align:left; flex-shrink:0; min-width:80px; }}
+.platform-pct {{ font-family:var(--font-mono); font-size:28px; font-weight:700; flex:1; text-align:center; }}
+.platform-bar.imessage .platform-pct {{ color:var(--imessage); }}
+.platform-bar.whatsapp .platform-pct {{ color:var(--whatsapp); }}
+.platform-count {{ font-family:var(--font-mono); font-size:16px; font-weight:500; opacity:0.8; flex-shrink:0; }}
+.platform-bar.imessage .platform-count {{ color:var(--imessage); }}
+.platform-bar.whatsapp .platform-count {{ color:var(--whatsapp); }}
 
 .slide h1 {{ font-family:var(--font-pixel); font-size:36px; font-weight:400; line-height:1.2; margin:20px 0; }}
 .slide-label {{ font-family:var(--font-pixel); font-size:12px; font-weight:400; color:var(--green); letter-spacing:0.5px; margin-bottom:16px; }}
 .slide-icon {{ font-size:80px; margin-bottom:16px; }}
 .slide-text {{ font-size:18px; color:var(--muted); margin:8px 0; }}
 .subtitle {{ font-size:18px; color:var(--muted); margin-top:8px; }}
+.subtitle2 {{ font-size:16px; color:var(--muted); margin-top:4px; opacity:0.7; }}
 
 .big-number {{ font-family:var(--font-mono); font-size:80px; font-weight:500; line-height:1; letter-spacing:-2px; }}
+.big-number.gradient {{ background:linear-gradient(90deg, var(--imessage), var(--whatsapp)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }}
 .pct {{ font-family:var(--font-body); font-size:48px; }}
 .huge-name {{ font-family:var(--font-body); font-size:32px; font-weight:600; line-height:1.25; word-break:break-word; max-width:90%; margin:16px 0; }}
 .personality-type {{ font-family:var(--font-pixel); font-size:18px; font-weight:400; line-height:1.25; color:var(--purple); margin:24px 0; text-transform:uppercase; letter-spacing:0.5px; }}
@@ -1062,6 +1435,9 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .pink {{ color:var(--pink); }}
 .orange {{ color:var(--orange); }}
 .purple {{ color:var(--purple); }}
+
+.source-badge {{ font-size:16px; margin-left:4px; }}
+.source-icon {{ font-size:14px; opacity:0.7; }}
 
 .stat-grid {{ display:flex; gap:40px; margin-top:28px; }}
 .stat-item {{ display:flex; flex-direction:column; align-items:center; }}
@@ -1090,7 +1466,6 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 @keyframes pulse {{ 0%,100%{{opacity:0.4}} 50%{{opacity:1}} }}
 
 /* === SLIDE ANIMATIONS === */
-/* Elements start hidden, animate when slide is active */
 .slide .slide-label,
 .slide .slide-text,
 .slide .slide-icon,
@@ -1104,22 +1479,23 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide .emoji-row,
 .slide h1,
 .slide .subtitle,
+.slide .subtitle2,
 .slide .summary-card,
 .slide .contrib-graph,
-.slide .contrib-stats {{
+.slide .contrib-stats,
+.slide .platform-bars {{
     opacity: 0;
     transform: translateY(20px);
 }}
 
-/* Gallery transition */
 .gallery {{ transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }}
 
-/* === DEFAULT ANIMATIONS - Varied motion styles === */
-.slide.active .slide-label {{ animation: labelSlide 0.4s ease-out forwards; }}
+.slide.active .slide-label {{ animation: textFade 0.4s ease-out forwards; }}
 .slide.active .slide-text {{ animation: textFade 0.4s ease-out 0.1s forwards; }}
 .slide.active .slide-icon {{ animation: iconPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s forwards; }}
 .slide.active h1 {{ animation: titleReveal 0.5s ease-out 0.12s forwards; }}
 .slide.active .subtitle {{ animation: textFade 0.4s ease-out 0.25s forwards; }}
+.slide.active .subtitle2 {{ animation: textFade 0.4s ease-out 0.35s forwards; }}
 .slide.active .big-number {{ animation: numberFlip 0.6s ease-out 0.18s forwards; }}
 .slide.active .huge-name {{ animation: nameBlur 0.5s ease-out 0.2s forwards; }}
 .slide.active .personality-type {{ animation: glitchReveal 0.8s ease-out 0.15s forwards; }}
@@ -1132,7 +1508,6 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide.active .stat-item:nth-child(3) {{ animation-delay: 0.46s; }}
 .slide.active .rank-list {{ animation: none; opacity: 1; transform: none; }}
 .slide.active .rank-item {{ animation: rankSlide 0.35s ease-out forwards; }}
-.slide.active .rank-item:first-child {{ animation: topRankDrop 0.45s ease-out forwards; }}
 .slide.active .rank-item:nth-child(1) {{ animation-delay: 0.1s; }}
 .slide.active .rank-item:nth-child(2) {{ animation-delay: 0.18s; }}
 .slide.active .rank-item:nth-child(3) {{ animation-delay: 0.26s; }}
@@ -1142,233 +1517,32 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide.active .summary-card {{ animation: cardRise 0.6s ease-out 0.1s forwards; }}
 .slide.active .screenshot-btn {{ opacity: 0; animation: buttonSlide 0.4s ease-out 0.5s forwards; }}
 .slide.active .share-hint {{ opacity: 0; animation: hintFade 0.4s ease-out 0.7s forwards; }}
+.slide.active .contrib-graph {{ animation: graphReveal 0.8s ease-out 0.15s forwards; }}
+.slide.active .contrib-stats {{ animation: none; opacity: 1; transform: none; }}
+.slide.active .contrib-stat {{ animation: statFade 0.35s ease-out forwards; }}
+.slide.active .contrib-stat:nth-child(1) {{ animation-delay: 0.5s; }}
+.slide.active .contrib-stat:nth-child(2) {{ animation-delay: 0.6s; }}
+.slide.active .contrib-stat:nth-child(3) {{ animation-delay: 0.7s; }}
+.slide.active .platform-bars {{ animation: textFade 0.5s ease-out 0.2s forwards; }}
 
-/* === INTRO SLIDE - Spin entrance === */
-.slide.intro.active .slide-icon {{ animation: introIconSpin 0.7s ease-out forwards; }}
-.slide.intro.active h1 {{ animation: introTitleGlitch 0.6s ease-out 0.3s forwards; }}
-.slide.intro.active .subtitle {{ animation: textFade 0.4s ease-out 0.5s forwards; }}
-
-/* === PINK SLIDE (#1 person) - Soft glow === */
-.slide.pink-bg.active .slide-label {{ animation: textFade 0.4s ease-out forwards; }}
-.slide.pink-bg.active .huge-name {{ animation: nameGlow 0.6s ease-out 0.15s forwards; }}
-.slide.pink-bg.active .big-number {{ animation: numberFlip 0.5s ease-out 0.35s forwards; }}
-
-/* === PURPLE SLIDE (Personality) - Glitch === */
-.slide.purple-bg.active .slide-label {{ animation: labelGlitch 0.5s ease-out forwards; }}
-.slide.purple-bg.active .personality-type {{ animation: personalityGlitch 0.8s ease-out 0.12s forwards; }}
-.slide.purple-bg.active .roast {{ animation: flickerReveal 0.6s ease-out 0.45s forwards; }}
-
-/* === RED SLIDE (Down Bad) - Drop from above === */
-.slide.red-bg.active .slide-label {{ animation: textFade 0.4s ease-out forwards; }}
-.slide.red-bg.active .huge-name {{ animation: dramaticDrop 0.5s ease-out 0.12s forwards; }}
-.slide.red-bg.active .big-number {{ animation: shakeReveal 0.5s ease-out 0.35s forwards; }}
-
-/* === ORANGE SLIDE (Heating Up / Top Groups) - Glow rise === */
-.slide.orange-bg.active .slide-label {{ animation: fireLabel 0.4s ease-out forwards; }}
-.slide.orange-bg.active .rank-item {{ animation: glowRise 0.4s ease-out forwards; }}
-.slide.orange-bg.active .rank-item:first-child {{ animation: glowRise 0.45s ease-out forwards; }}
-.slide.orange-bg.active .rank-item:nth-child(1) {{ animation-delay: 0.06s; }}
-.slide.orange-bg.active .rank-item:nth-child(2) {{ animation-delay: 0.14s; }}
-.slide.orange-bg.active .rank-item:nth-child(3) {{ animation-delay: 0.22s; }}
-.slide.orange-bg.active .rank-item:nth-child(4) {{ animation-delay: 0.30s; }}
-.slide.orange-bg.active .rank-item:nth-child(5) {{ animation-delay: 0.38s; }}
-
-/* === SUMMARY SLIDE - Clean rise === */
-.slide.summary-slide.active .summary-card {{ animation: cardRise 0.6s ease-out 0.1s forwards; }}
-
-/* === CONTRIBUTION GRAPH SLIDE - Grid reveal === */
-.slide.contrib-slide.active .contrib-graph {{ animation: graphReveal 0.8s ease-out 0.15s forwards; }}
-.slide.contrib-slide.active .contrib-stats {{ animation: none; opacity: 1; transform: none; }}
-.slide.contrib-slide.active .contrib-stat {{ animation: statFade 0.35s ease-out forwards; }}
-.slide.contrib-slide.active .contrib-stat:nth-child(1) {{ animation-delay: 0.5s; }}
-.slide.contrib-slide.active .contrib-stat:nth-child(2) {{ animation-delay: 0.6s; }}
-.slide.contrib-slide.active .contrib-stat:nth-child(3) {{ animation-delay: 0.7s; }}
-
-/* ===== KEYFRAMES ===== */
-
-/* Base animations - VARIED STYLES */
-
-/* Slide from diagonal */
-@keyframes labelSlide {{
-    0% {{ opacity: 0; transform: translateY(12px) translateX(-8px); }}
-    100% {{ opacity: 1; transform: translateY(0) translateX(0); }}
-}}
-
-/* Simple fade up */
-@keyframes textFade {{
-    0% {{ opacity: 0; transform: translateY(15px); }}
-    100% {{ opacity: 1; transform: translateY(0); }}
-}}
-
-/* Scale with slight overshoot */
-@keyframes titleReveal {{
-    0% {{ opacity: 0; transform: translateY(25px) scale(0.95); }}
-    70% {{ transform: translateY(-3px) scale(1.01); }}
-    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
-}}
-
-/* Wobble rotation */
-@keyframes iconPop {{
-    0% {{ opacity: 0; transform: translateY(20px) scale(0.4) rotate(-15deg); }}
-    50% {{ transform: translateY(-8px) scale(1.15) rotate(8deg); }}
-    75% {{ transform: translateY(2px) scale(0.95) rotate(-3deg); }}
-    100% {{ opacity: 1; transform: translateY(0) scale(1) rotate(0); }}
-}}
-
-/* 3D flip reveal - for impactful numbers */
-@keyframes numberFlip {{
-    0% {{ opacity: 0; transform: perspective(400px) rotateX(-60deg) translateY(20px); }}
-    60% {{ transform: perspective(400px) rotateX(10deg); }}
-    100% {{ opacity: 1; transform: perspective(400px) rotateX(0) translateY(0); }}
-}}
-
-/* Soft blur fade - for names */
-@keyframes nameBlur {{
-    0% {{ opacity: 0; transform: translateY(20px); filter: blur(8px); }}
-    100% {{ opacity: 1; transform: translateY(0); filter: blur(0); }}
-}}
-
-/* Typewriter cursor feel */
-@keyframes roastType {{
-    0% {{ opacity: 0; clip-path: inset(0 100% 0 0); }}
-    100% {{ opacity: 1; clip-path: inset(0 0 0 0); }}
-}}
-
-/* Stagger fade in - for stat items */
-@keyframes statFade {{
-    0% {{ opacity: 0; transform: translateY(12px); }}
-    100% {{ opacity: 1; transform: translateY(0); }}
-}}
-
-/* Horizontal slide - for rank items */
-@keyframes rankSlide {{
-    0% {{ opacity: 0; transform: translateX(-20px); }}
-    100% {{ opacity: 1; transform: translateX(0); }}
-}}
-
-/* Crown drop for #1 */
-@keyframes topRankDrop {{
-    0% {{ opacity: 0; transform: translateY(-30px); }}
-    70% {{ transform: translateY(4px); }}
-    100% {{ opacity: 1; transform: translateY(0); }}
-}}
-
-/* Pill stamp - for badges */
-@keyframes badgeStamp {{
-    0% {{ opacity: 0; transform: scale(1.4); }}
-    60% {{ transform: scale(0.95); }}
-    100% {{ opacity: 1; transform: scale(1); }}
-}}
-
-/* Letter spread - for emoji row */
-@keyframes emojiSpread {{
-    0% {{ opacity: 0; letter-spacing: 0px; }}
-    100% {{ opacity: 1; letter-spacing: 20px; }}
-}}
-
-/* Clean rise - for cards */
-@keyframes cardRise {{
-    0% {{ opacity: 0; transform: translateY(40px); }}
-    100% {{ opacity: 1; transform: translateY(0); }}
-}}
-
-/* Graph reveal - for contribution graph */
-@keyframes graphReveal {{
-    0% {{ opacity: 0; transform: translateY(30px) scale(0.95); }}
-    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
-}}
-
-/* Simple slide up */
-@keyframes buttonSlide {{
-    0% {{ opacity: 0; transform: translateY(15px); }}
-    100% {{ opacity: 1; transform: translateY(0); }}
-}}
-
-/* Fade only */
-@keyframes hintFade {{
-    0% {{ opacity: 0; }}
-    100% {{ opacity: 1; }}
-}}
-
-/* Intro slide - spin and glitch */
-@keyframes introIconSpin {{
-    0% {{ opacity: 0; transform: rotate(-180deg) scale(0.3); }}
-    100% {{ opacity: 1; transform: rotate(0) scale(1); }}
-}}
-
-@keyframes introTitleGlitch {{
-    0% {{ opacity: 0; transform: translateY(15px); filter: blur(6px); }}
-    40% {{ opacity: 0.8; transform: translateY(3px) skewX(-3deg); filter: blur(2px); }}
-    70% {{ transform: translateY(-2px) skewX(2deg); filter: blur(0); }}
-    100% {{ opacity: 1; transform: translateY(0) skewX(0); }}
-}}
-
-/* Pink slide - soft glow */
-@keyframes nameGlow {{
-    0% {{ opacity: 0; transform: translateY(15px); filter: blur(4px) brightness(1.3); }}
-    100% {{ opacity: 1; transform: translateY(0); filter: blur(0) brightness(1); }}
-}}
-
-/* Purple slide - glitch chaos */
-@keyframes labelGlitch {{
-    0% {{ opacity: 0; transform: skewX(-5deg); }}
-    50% {{ opacity: 0.7; transform: skewX(3deg); }}
-    100% {{ opacity: 1; transform: skewX(0); }}
-}}
-
-@keyframes personalityGlitch {{
-    0% {{ opacity: 0; transform: translateY(20px); filter: blur(8px); }}
-    20% {{ opacity: 0.5; transform: translateY(10px) skewX(-8deg); filter: blur(4px); }}
-    40% {{ opacity: 0.7; transform: translateY(5px) skewX(5deg); filter: blur(2px); }}
-    60% {{ opacity: 0.9; transform: translateY(-2px) skewX(-2deg); filter: blur(1px); }}
-    80% {{ transform: skewX(1deg); }}
-    100% {{ opacity: 1; transform: translateY(0) skewX(0); filter: blur(0); }}
-}}
-
-@keyframes flickerReveal {{
-    0% {{ opacity: 0; }}
-    20% {{ opacity: 0.4; }}
-    35% {{ opacity: 0.1; }}
-    50% {{ opacity: 0.7; }}
-    65% {{ opacity: 0.3; }}
-    80% {{ opacity: 0.9; }}
-    100% {{ opacity: 1; }}
-}}
-
-@keyframes glitchReveal {{
-    0% {{ opacity: 0; transform: translateY(15px); filter: blur(4px); }}
-    50% {{ opacity: 0.8; transform: translateY(3px) skewX(-3deg); filter: blur(1px); }}
-    100% {{ opacity: 1; transform: translateY(0) skewX(0); filter: blur(0); }}
-}}
-
-/* Red slide - dramatic drop */
-@keyframes dramaticDrop {{
-    0% {{ opacity: 0; transform: translateY(-50px); }}
-    70% {{ transform: translateY(5px); }}
-    100% {{ opacity: 1; transform: translateY(0); }}
-}}
-
-@keyframes shakeReveal {{
-    0% {{ opacity: 0; transform: translateX(0); }}
-    25% {{ opacity: 0.7; transform: translateX(-6px); }}
-    50% {{ transform: translateX(6px); }}
-    75% {{ transform: translateX(-3px); }}
-    100% {{ opacity: 1; transform: translateX(0); }}
-}}
-
-/* Orange slide - glow rise */
-@keyframes fireLabel {{
-    0% {{ opacity: 0; filter: brightness(1.4); }}
-    100% {{ opacity: 1; filter: brightness(1); }}
-}}
-
-@keyframes glowRise {{
-    0% {{ opacity: 0; transform: translateY(20px); filter: brightness(1.3); }}
-    100% {{ opacity: 1; transform: translateY(0); filter: brightness(1); }}
-}}
+@keyframes textFade {{ 0% {{ opacity: 0; transform: translateY(15px); }} 100% {{ opacity: 1; transform: translateY(0); }} }}
+@keyframes titleReveal {{ 0% {{ opacity: 0; transform: translateY(25px) scale(0.95); }} 70% {{ transform: translateY(-3px) scale(1.01); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
+@keyframes iconPop {{ 0% {{ opacity: 0; transform: translateY(20px) scale(0.4) rotate(-15deg); }} 50% {{ transform: translateY(-8px) scale(1.15) rotate(8deg); }} 75% {{ transform: translateY(2px) scale(0.95) rotate(-3deg); }} 100% {{ opacity: 1; transform: translateY(0) scale(1) rotate(0); }} }}
+@keyframes numberFlip {{ 0% {{ opacity: 0; transform: perspective(400px) rotateX(-60deg) translateY(20px); }} 60% {{ transform: perspective(400px) rotateX(10deg); }} 100% {{ opacity: 1; transform: perspective(400px) rotateX(0) translateY(0); }} }}
+@keyframes nameBlur {{ 0% {{ opacity: 0; transform: translateY(20px); filter: blur(8px); }} 100% {{ opacity: 1; transform: translateY(0); filter: blur(0); }} }}
+@keyframes roastType {{ 0% {{ opacity: 0; clip-path: inset(0 100% 0 0); }} 100% {{ opacity: 1; clip-path: inset(0 0 0 0); }} }}
+@keyframes statFade {{ 0% {{ opacity: 0; transform: translateY(12px); }} 100% {{ opacity: 1; transform: translateY(0); }} }}
+@keyframes rankSlide {{ 0% {{ opacity: 0; transform: translateX(-20px); }} 100% {{ opacity: 1; transform: translateX(0); }} }}
+@keyframes badgeStamp {{ 0% {{ opacity: 0; transform: scale(1.4); }} 60% {{ transform: scale(0.95); }} 100% {{ opacity: 1; transform: scale(1); }} }}
+@keyframes emojiSpread {{ 0% {{ opacity: 0; letter-spacing: 0px; }} 100% {{ opacity: 1; letter-spacing: 20px; }} }}
+@keyframes cardRise {{ 0% {{ opacity: 0; transform: translateY(40px); }} 100% {{ opacity: 1; transform: translateY(0); }} }}
+@keyframes graphReveal {{ 0% {{ opacity: 0; transform: translateY(30px) scale(0.95); }} 100% {{ opacity: 1; transform: translateY(0) scale(1); }} }}
+@keyframes buttonSlide {{ 0% {{ opacity: 0; transform: translateY(15px); }} 100% {{ opacity: 1; transform: translateY(0); }} }}
+@keyframes hintFade {{ 0% {{ opacity: 0; }} 100% {{ opacity: 1; }} }}
+@keyframes glitchReveal {{ 0% {{ opacity: 0; transform: translateY(15px); filter: blur(4px); }} 50% {{ opacity: 0.8; transform: translateY(3px) skewX(-3deg); filter: blur(1px); }} 100% {{ opacity: 1; transform: translateY(0) skewX(0); filter: blur(0); }} }}
 
 .summary-card {{
-    background:linear-gradient(145deg,#1a1a2e 0%,#0f1a2e 100%);
+    background:linear-gradient(145deg,#1a1a2e 0%,#1a2f1a 100%);
     border:2px solid rgba(255,255,255,0.1);
     border-radius:24px;
     padding:32px;
@@ -1381,8 +1555,12 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .summary-title {{ font-family:var(--font-pixel); font-size:11px; font-weight:400; color:var(--text); }}
 .summary-hero {{ margin:24px 0; }}
 .summary-big-stat {{ display:flex; flex-direction:column; align-items:center; }}
-.summary-big-num {{ font-family:var(--font-mono); font-size:56px; font-weight:600; color:var(--green); line-height:1; letter-spacing:-1px; }}
+.summary-big-num {{ font-family:var(--font-mono); font-size:56px; font-weight:600; background:linear-gradient(90deg, var(--imessage), var(--whatsapp)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; line-height:1; letter-spacing:-1px; }}
 .summary-big-label {{ font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:8px; }}
+.summary-platform-split {{ display:flex; justify-content:center; gap:24px; margin:16px 0; padding:12px 0; border-top:1px solid rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.05); }}
+.summary-platform {{ font-family:var(--font-mono); font-size:14px; }}
+.summary-platform.imessage {{ color:var(--imessage); }}
+.summary-platform.whatsapp {{ color:var(--whatsapp); }}
 .summary-stats {{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:24px 0; padding:20px 0; border-top:1px solid rgba(255,255,255,0.1); border-bottom:1px solid rgba(255,255,255,0.1); }}
 .summary-stat {{ display:flex; flex-direction:column; align-items:center; }}
 .summary-stat-val {{ font-family:var(--font-mono); font-size:20px; font-weight:600; color:var(--cyan); }}
@@ -1397,11 +1575,11 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .screenshot-btn {{
     display:flex; align-items:center; justify-content:center; gap:10px;
     font-family:var(--font-pixel); font-size:10px; font-weight:400; text-transform:uppercase; letter-spacing:0.3px;
-    background:var(--green); color:#000; border:none;
+    background:linear-gradient(90deg, var(--imessage), var(--whatsapp)); color:#000; border:none;
     padding:16px 32px; border-radius:12px; margin-top:28px;
     cursor:pointer; transition:transform 0.2s,background 0.2s;
 }}
-.screenshot-btn:hover {{ background:#6ee7b7; transform:scale(1.02); }}
+.screenshot-btn:hover {{ transform:scale(1.02); }}
 .screenshot-btn:active {{ transform:scale(0.98); }}
 .btn-icon {{ font-size:20px; }}
 .share-hint {{ font-size:14px; color:var(--muted); margin-top:16px; }}
@@ -1417,9 +1595,7 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide.active .slide-save-btn {{ opacity:1; }}
 .slide-save-btn:hover {{ background:rgba(74,222,128,0.25); border-color:var(--green); }}
 
-/* Force all elements visible for screenshot capture */
-.slide.capturing,
-.slide.capturing * {{
+.slide.capturing, .slide.capturing * {{
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
@@ -1466,19 +1642,16 @@ for (let i = 0; i < total; i++) {{
     progressEl.appendChild(dot);
 }}
 const dots = progressEl.querySelectorAll('.dot');
-
 const slides = gallery.querySelectorAll('.slide');
 
 function goTo(idx) {{
     if (idx < 0 || idx >= total) return;
-    // Remove active from all slides
     slides.forEach(s => s.classList.remove('active'));
     current = idx;
     gallery.style.transform = `translateX(-${{current * 100}}vw)`;
     dots.forEach((d, i) => d.classList.toggle('active', i === current));
     prevBtn.classList.toggle('hidden', current === 0);
     nextBtn.classList.toggle('hidden', current === total - 1);
-    // Add active to current slide after a tiny delay for animation reset
     setTimeout(() => slides[current].classList.add('active'), 50);
 }}
 
@@ -1507,9 +1680,9 @@ async function takeScreenshot() {{
     card.style.transform = 'none';
     await new Promise(r => setTimeout(r, 100));
     try {{
-        const canvas = await html2canvas(card, {{ backgroundColor:'#0f1a2e', scale:2, logging:false, useCORS:true }});
+        const canvas = await html2canvas(card, {{ backgroundColor:'#1a2f1a', scale:2, logging:false, useCORS:true }});
         const link = document.createElement('a');
-        link.download = 'imessage_wrapped_2025_summary.png';
+        link.download = 'texts_wrapped_{year}_summary.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
         btn.innerHTML = '<span class="btn-icon">✓</span><span>Saved!</span>';
@@ -1523,52 +1696,25 @@ async function takeScreenshot() {{
 async function saveSlide(slideEl, filename, btn) {{
     btn.innerHTML = '⏳';
     btn.disabled = true;
-
-    // Show watermark for screenshot
     const watermark = slideEl.querySelector('.slide-watermark');
     if (watermark) watermark.style.display = 'block';
-
-    // Hide the save button temporarily
     btn.style.visibility = 'hidden';
-
-    // Add capturing class to force all animations to final state
     slideEl.classList.add('capturing');
-
-    // Wait for browser to apply styles
     await new Promise(r => setTimeout(r, 50));
-
-    // Get computed background color (html2canvas has issues with CSS variables)
     const computedBg = getComputedStyle(slideEl).backgroundColor;
     const bgColor = computedBg && computedBg !== 'rgba(0, 0, 0, 0)' ? computedBg : '#0a0a12';
-
     try {{
-        const canvas = await html2canvas(slideEl, {{
-            backgroundColor: bgColor,
-            scale: 2,
-            logging: false,
-            useCORS: true,
-            width: slideEl.offsetWidth,
-            height: slideEl.offsetHeight
-        }});
-
-        // Create a square canvas centered on content
+        const canvas = await html2canvas(slideEl, {{ backgroundColor: bgColor, scale: 2, logging: false, useCORS: true, width: slideEl.offsetWidth, height: slideEl.offsetHeight }});
         const size = Math.min(canvas.width, canvas.height);
         const squareCanvas = document.createElement('canvas');
         squareCanvas.width = size;
         squareCanvas.height = size;
         const ctx = squareCanvas.getContext('2d');
-
-        // Fill with background color
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, size, size);
-
-        // Calculate crop position (center of original)
         const srcX = (canvas.width - size) / 2;
         const srcY = (canvas.height - size) / 2;
-
-        // Draw centered portion
         ctx.drawImage(canvas, srcX, srcY, size, size, 0, 0, size, size);
-
         const link = document.createElement('a');
         link.download = filename;
         link.href = squareCanvas.toDataURL('image/png');
@@ -1580,8 +1726,6 @@ async function saveSlide(slideEl, filename, btn) {{
         btn.disabled = false;
         btn.style.visibility = 'visible';
     }}
-
-    // Remove capturing class and hide watermark
     slideEl.classList.remove('capturing');
     if (watermark) watermark.style.display = 'none';
 }}
@@ -1612,50 +1756,88 @@ document.querySelectorAll('.contrib-cell[data-date]').forEach(cell => {{
 goTo(0);
 </script>
 </body></html>'''
-    
-    with open(path, 'w') as f: f.write(html)
+
+    with open(path, 'w') as f:
+        f.write(html)
     return path
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--output', '-o', default='imessage_wrapped_2025.html')
+    parser.add_argument('--output', '-o', default='combined_wrapped_2025.html')
     parser.add_argument('--use-2024', action='store_true')
     args = parser.parse_args()
-    
+
     print("\n" + "="*50)
-    print("  iMessage WRAPPED 2025 | wrap2025.com")
+    print("  COMBINED WRAPPED 2025 | wrap2025.com")
     print("="*50 + "\n")
-    
+
     print("[*] Checking access...")
-    check_access()
-    print("    ✓ OK")
-    
+    has_imessage, has_whatsapp = check_access()
+
+    platforms = []
+    if has_imessage:
+        platforms.append("iMessage")
+        print(f"    ✓ iMessage: {IMESSAGE_DB}")
+    if has_whatsapp:
+        platforms.append("WhatsApp")
+        print(f"    ✓ WhatsApp: {WHATSAPP_DB}")
+
+    print(f"\n[*] Platforms: {' + '.join(platforms)}")
+
     print("[*] Loading contacts...")
-    contacts = extract_contacts()
-    print(f"    ✓ {len(contacts)} indexed")
-    
-    ts_start, ts_jun = (TS_2024, TS_JUN_2024) if args.use_2024 else (TS_2025, TS_JUN_2025)
+    imessage_contacts = extract_imessage_contacts() if has_imessage else {}
+    whatsapp_contacts = extract_whatsapp_contacts() if has_whatsapp else {}
+    print(f"    ✓ {len(imessage_contacts)} from AddressBook, {len(whatsapp_contacts)} from WhatsApp")
+
+    # Determine year
     year = "2024" if args.use_2024 else "2025"
-    
-    test = q(f"SELECT COUNT(*) FROM message WHERE (date/1000000000+978307200)>{TS_2025}")[0][0]
-    if test < 100 and not args.use_2024:
-        print(f"    ⚠️  {test} msgs in 2025, using 2024")
-        ts_start, ts_jun = TS_2024, TS_JUN_2024
-        year = "2024"
-    
+
+    # Check if we have enough 2025 data
+    if not args.use_2024:
+        total_2025 = 0
+        if has_imessage:
+            r = q_imessage(f"SELECT COUNT(*) FROM message WHERE (date/1000000000+978307200)>{TS_2025_IMESSAGE}")
+            total_2025 += r[0][0]
+        if has_whatsapp:
+            r = q_whatsapp(f"SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{TS_2025_WHATSAPP}")
+            total_2025 += r[0][0]
+
+        if total_2025 < 100:
+            print(f"    ⚠️  Only {total_2025} msgs in 2025, using 2024")
+            year = "2024"
+
     spinner = Spinner()
 
-    print(f"[*] Analyzing {year}...")
-    spinner.start("Reading message database...")
-    data = analyze(ts_start, ts_jun)
-    data['year'] = int(year)  # Pass the year to gen_html
-    spinner.stop(f"{data['stats'][0]:,} messages analyzed")
+    # Analyze each platform
+    imessage_data = {}
+    whatsapp_data = {}
+
+    if has_imessage:
+        ts_start = TS_2024_IMESSAGE if year == "2024" else TS_2025_IMESSAGE
+        ts_jun = TS_JUN_2024_IMESSAGE if year == "2024" else TS_JUN_2025_IMESSAGE
+        print(f"[*] Analyzing iMessage {year}...")
+        spinner.start("Reading iMessage database...")
+        imessage_data = analyze_imessage(ts_start, ts_jun)
+        spinner.stop(f"{imessage_data['stats'][0]:,} iMessage messages analyzed")
+
+    if has_whatsapp:
+        ts_start = TS_2024_WHATSAPP if year == "2024" else TS_2025_WHATSAPP
+        ts_jun = TS_JUN_2024_WHATSAPP if year == "2024" else TS_JUN_2025_WHATSAPP
+        print(f"[*] Analyzing WhatsApp {year}...")
+        spinner.start("Reading WhatsApp database...")
+        whatsapp_data = analyze_whatsapp(ts_start, ts_jun)
+        spinner.stop(f"{whatsapp_data['stats'][0]:,} WhatsApp messages analyzed")
+
+    print(f"[*] Merging data...")
+    spinner.start("Combining platform stats...")
+    merged_data = merge_data(imessage_data, whatsapp_data, imessage_contacts, whatsapp_contacts, has_imessage, has_whatsapp)
+    spinner.stop(f"{merged_data['stats'][0]:,} total messages combined")
 
     print(f"[*] Generating report...")
     spinner.start("Building your wrapped...")
-    gen_html(data, contacts, args.output)
+    gen_html(merged_data, args.output, year, has_imessage, has_whatsapp)
     spinner.stop(f"Saved to {args.output}")
-    
+
     subprocess.run(['open', args.output])
     print("\n  Done! Click through your wrapped.\n")
 
