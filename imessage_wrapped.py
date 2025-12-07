@@ -259,9 +259,25 @@ def analyze(ts_start, ts_jun):
     # NEW: Busiest day
     r = q(f"SELECT DATE(datetime((date/1000000000+978307200),'unixepoch','localtime')) d, COUNT(*) c FROM message WHERE (date/1000000000+978307200)>{ts_start} GROUP BY d ORDER BY c DESC LIMIT 1")
     if r:
-        d['busiest_day'] = (r[0][0], r[0][1])  # ('2025-03-15', 523)
+        busiest_date = r[0][0]
+        d['busiest_day'] = (busiest_date, r[0][1])  # ('2025-03-15', 523)
+
+        # Top 10 people you messaged on that busiest day (1:1 chats only, exclude shortcodes)
+        d['busiest_day_top'] = q(f"""{one_on_one_cte}
+            SELECT h.id, COUNT(*) t
+            FROM message m
+            JOIN handle h ON m.handle_id = h.ROWID
+            WHERE DATE(datetime((m.date/1000000000+978307200),'unixepoch','localtime')) = '{busiest_date}'
+            AND (m.date/1000000000+978307200)>{ts_start}
+            AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+            AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+            GROUP BY h.id
+            ORDER BY t DESC
+            LIMIT 10
+        """)
     else:
         d['busiest_day'] = None
+        d['busiest_day_top'] = []
     
     # NEW: Conversation starter % (who texts first after 4+ hour gap) - 1:1 only
     r = q(f"""
@@ -417,21 +433,24 @@ def gen_html(d, contacts, path):
     else:
         hr_str = f"{hr-12}PM"
     
-    # Format busiest day
-    from datetime import datetime as dt
-    if d['busiest_day']:
-        bd = dt.strptime(d['busiest_day'][0], '%Y-%m-%d')
-        busiest_str = bd.strftime('%b %d')
-        busiest_count = d['busiest_day'][1]
-    else:
-        busiest_str = "N/A"
-        busiest_count = 0
-
     # Calculate days elapsed in the year for accurate per-day stats
+    from datetime import datetime as dt
     now = dt.now()
     year_start = dt(now.year, 1, 1)
     days_elapsed = max(1, (now - year_start).days)  # At least 1 to avoid div by zero
     msgs_per_day = s[0] // days_elapsed
+
+    # Format busiest day
+    busiest_top = d.get('busiest_day_top') or []
+    if d['busiest_day']:
+        bd = dt.strptime(d['busiest_day'][0], '%Y-%m-%d')
+        busiest_str = bd.strftime('%b %d')
+        busiest_count = d['busiest_day'][1]
+        busiest_mult = round(busiest_count / max(msgs_per_day, 1), 1)
+    else:
+        busiest_str = "N/A"
+        busiest_count = 0
+        busiest_mult = 1.0
 
     slides = []
 
@@ -616,13 +635,21 @@ def gen_html(d, contacts, path):
 
     # Slide 13: Busiest Day
     if d['busiest_day']:
+        top_busiest_html = ''
+        if busiest_top:
+            top_items = ''.join([f'<div class="rank-item"><span class="rank-num">{i}</span><span class="rank-name">{n(h)}</span><span class="rank-count">{c:,}</span></div>' for i,(h,c) in enumerate(busiest_top,1)])
+            top_busiest_html = f'''
+            <div class="slide-text" style="margin-top:18px;">Top people you messaged that day</div>
+            <div class="rank-list">{top_items}</div>'''
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// BUSIEST DAY</div>
             <div class="slide-text">your most unhinged day</div>
             <div class="big-number orange">{busiest_str}</div>
             <div class="slide-text"><span class="yellow">{busiest_count:,}</span> messages in one day</div>
+            <div class="slide-text">usually <span class="cyan">{msgs_per_day:,}</span> per day → <span class="yellow">{busiest_mult}x</span> spike</div>
             <div class="roast">what happened??</div>
+            {top_busiest_html}
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_busiest_day.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
