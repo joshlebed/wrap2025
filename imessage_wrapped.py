@@ -698,6 +698,7 @@ def gen_html(d, contacts, path):
             <div class="huge-name cyan">{n(ln[0])}</div>
             <div class="big-number yellow">{ln[1]}</div>
             <div class="slide-text">late night texts</div>
+            <div class="slide-text" style="max-width:420px;">the friend getting the most pings between midnight and 5am</div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_3am_bestie.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
@@ -766,6 +767,7 @@ def gen_html(d, contacts, path):
         <div class="slide orange-bg">
             <div class="slide-label">// HEATING UP</div>
             <div class="slide-text">getting stronger in H2</div>
+            <div class="slide-text" style="max-width:420px;">who you messaged way more in the back half of the year (Jul-Dec) compared to the front half</div>
             <div class="rank-list">{heat_html}</div>
             <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_heating_up.png', this)">📸 Save</button>
             <div class="slide-watermark">wrap2025.com</div>
