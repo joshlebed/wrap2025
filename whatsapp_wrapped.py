@@ -4,7 +4,7 @@ WhatsApp Wrapped 2025 - Your texting habits, exposed.
 Usage: python3 whatsapp_wrapped.py
 """
 
-import sqlite3, os, sys, re, subprocess, argparse, glob
+import sqlite3, os, sys, re, subprocess, argparse, glob, threading, time
 from datetime import datetime
 
 # WhatsApp database locations (try in order)
@@ -13,6 +13,38 @@ WHATSAPP_PATHS = [
     os.path.expanduser("~/Library/Containers/com.whatsapp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite"),
     os.path.expanduser("~/Library/Containers/desktop.WhatsApp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite"),
 ]
+
+class Spinner:
+    """Animated terminal spinner for long operations"""
+    def __init__(self, message=""):
+        self.message = message
+        self.spinning = False
+        self.thread = None
+        self.frames = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']
+
+    def spin(self):
+        i = 0
+        while self.spinning:
+            frame = self.frames[i % len(self.frames)]
+            print(f"\r    {frame} {self.message}", end='', flush=True)
+            time.sleep(0.1)
+            i += 1
+
+    def start(self, message=None):
+        if message:
+            self.message = message
+        self.spinning = True
+        self.thread = threading.Thread(target=self.spin)
+        self.thread.start()
+
+    def stop(self, final_message=None):
+        self.spinning = False
+        if self.thread:
+            self.thread.join()
+        if final_message:
+            print(f"\r    ✓ {final_message}".ljust(60))
+        else:
+            print()
 
 # Timestamps: Apple Cocoa Core Data Time (seconds since Jan 1, 2001)
 # Add 978307200 to convert to Unix timestamp
@@ -471,11 +503,15 @@ def gen_html(d, contacts, path):
     # Slide 4: Contribution Graph (GitHub-style activity heatmap) - Year overview
     if d['daily_counts']:
         from datetime import datetime as dt, timedelta
-        # Determine the year from the data (first date in the data)
-        first_data_date = min(d['daily_counts'].keys())
-        year = int(first_data_date[:4])
+        # Use the analysis year passed from main, extend to current date
+        year = d.get('year', now.year)
         year_start = dt(year, 1, 1)
-        year_end = dt(year, 12, 31)
+        # End at current date if we're in the analysis year, otherwise Dec 31
+        today = dt.now()
+        if today.year == year:
+            year_end = today
+        else:
+            year_end = dt(year, 12, 31)
 
         # Build the calendar grid (53 weeks x 7 days)
         # GitHub style: columns are weeks, rows are days (Sun=0 to Sat=6)
@@ -1408,9 +1444,28 @@ async function saveSlide(slideEl, filename, btn) {{
             width: slideEl.offsetWidth,
             height: slideEl.offsetHeight
         }});
+
+        // Create a square canvas centered on content
+        const size = Math.min(canvas.width, canvas.height);
+        const squareCanvas = document.createElement('canvas');
+        squareCanvas.width = size;
+        squareCanvas.height = size;
+        const ctx = squareCanvas.getContext('2d');
+
+        // Fill with background color
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, size, size);
+
+        // Calculate crop position (center of original)
+        const srcX = (canvas.width - size) / 2;
+        const srcY = (canvas.height - size) / 2;
+
+        // Draw centered portion
+        ctx.drawImage(canvas, srcX, srcY, size, size, 0, 0, size, size);
+
         const link = document.createElement('a');
         link.download = filename;
-        link.href = canvas.toDataURL('image/png');
+        link.href = squareCanvas.toDataURL('image/png');
         link.click();
         btn.innerHTML = '✓';
         setTimeout(() => {{ btn.innerHTML = '📸 Save'; btn.disabled = false; btn.style.visibility = 'visible'; }}, 2000);
@@ -1459,15 +1514,18 @@ def main():
         ts_start, ts_jun = TS_2024, TS_JUN_2024
         year = "2024"
 
+    spinner = Spinner()
+
     print(f"[*] Analyzing {year}...")
-    print("    ⏳ Reading message database...", end='', flush=True)
+    spinner.start("Reading message database...")
     data = analyze(ts_start, ts_jun)
-    print(f"\r    ✓ {data['stats'][0]:,} messages analyzed    ")
+    data['year'] = int(year)  # Pass the year to gen_html
+    spinner.stop(f"{data['stats'][0]:,} messages analyzed")
 
     print(f"[*] Generating report...")
-    print("    ⏳ Building your wrapped...", end='', flush=True)
+    spinner.start("Building your wrapped...")
     gen_html(data, contacts, args.output)
-    print(f"\r    ✓ Saved to {args.output}       ")
+    spinner.stop(f"Saved to {args.output}")
 
     subprocess.run(['open', args.output])
     print("\n  Done! Click through your wrapped.\n")
