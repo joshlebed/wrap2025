@@ -706,10 +706,18 @@ def gen_html(d, contacts, path):
     if d['busiest_day']:
         top_busiest_html = ''
         if busiest_top:
-            top_items = ''.join([f'<div class="rank-item"><span class="rank-num">{i}</span><span class="rank-name">{n(h)}</span><span class="rank-count">{c:,}</span></div>' for i,(h,c) in enumerate(busiest_top,1)])
+            def render_busiest_item(idx, handle, count):
+                hidden_class = " hidden-busiest" if idx > 5 else ""
+                return f'<div class="rank-item{hidden_class}"><span class="rank-num">{idx}</span><span class="rank-name">{n(handle)}</span><span class="rank-count">{count:,}</span></div>'
+
+            top_items = ''.join([render_busiest_item(i, h, c) for i,(h,c) in enumerate(busiest_top,1)])
+            expand_btn = ''
+            if len(busiest_top) > 5:
+                expand_btn = '<button class="toggle-busiest-btn" onclick="toggleBusiest(this)">Show full top 10</button>'
             top_busiest_html = f'''
             <div class="slide-text" style="margin-top:18px;">Top people you messaged that day</div>
-            <div class="rank-list">{top_items}</div>'''
+            <div class="rank-list busiest-list">{top_items}</div>
+            {expand_btn}'''
         slides.append(f'''
         <div class="slide">
             <div class="slide-label">// BUSIEST DAY</div>
@@ -935,6 +943,22 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .rank-num {{ font-family:var(--font-mono); font-size:20px; font-weight:600; color:var(--green); width:36px; text-align:center; }}
 .rank-name {{ flex:1; font-size:16px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .rank-count {{ font-family:var(--font-mono); font-size:18px; font-weight:600; color:var(--yellow); }}
+.rank-list.busiest-list .hidden-busiest {{ display:none; }}
+.rank-list.busiest-list.show-all .hidden-busiest {{ display:flex; }}
+.toggle-busiest-btn {{
+    margin-top:12px;
+    padding:10px 18px;
+    font-family:var(--font-pixel);
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:0.3px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,0.2);
+    background:rgba(255,255,255,0.05);
+    color:var(--text);
+    cursor:pointer;
+}}
+.toggle-busiest-btn:hover {{ border-color:var(--green); color:var(--green); }}
 
 .badge {{ display:inline-block; padding:8px 18px; border-radius:24px; font-family:var(--font-pixel); font-size:9px; font-weight:400; text-transform:uppercase; letter-spacing:0.3px; margin-top:20px; border:2px solid; }}
 .badge.green {{ border-color:var(--green); color:var(--green); background:rgba(74,222,128,0.1); }}
@@ -1300,6 +1324,14 @@ for (let i = 0; i < total; i++) {{
 const dots = progressEl.querySelectorAll('.dot');
 
 const slides = gallery.querySelectorAll('.slide');
+
+function toggleBusiest(btn) {{
+    const slide = btn.closest('.slide');
+    const list = slide ? slide.querySelector('.busiest-list') : null;
+    if (!list) return;
+    const expanded = list.classList.toggle('show-all');
+    btn.textContent = expanded ? 'Show top 5 only' : 'Show full top 10';
+}}
 
 function goTo(idx) {{
     if (idx < 0 || idx >= total) return;
