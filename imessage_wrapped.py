@@ -754,7 +754,40 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 12: 3AM Bestie
+    # Slide 12: Streaks
+    if d.get('streak'):
+        st = d['streak']
+        st_start = st['start'].strftime('%b %d')
+        st_end = st['end'].strftime('%b %d')
+        slides.append(f'''
+        <div class="slide">
+            <div class="slide-label">// STREAKS</div>
+            <div class="slide-text">longest daily grind</div>
+            <div class="huge-name green">{n(st['handle'])}</div>
+            <div class="big-number yellow">{st['length']}</div>
+            <div class="slide-text">days in a row ({st_start} → {st_end})</div>
+            <div class="slide-text" style="max-width:420px;">consecutive days with at least one message between you two</div>
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_streaks.png', this)">📸 Save</button>
+            <div class="slide-watermark">wrap2025.com</div>
+        </div>''')
+
+    # Slide 13: Message marathon
+    if d.get('marathon'):
+        mm = d['marathon']
+        mm_date = dt.strptime(mm['date'], '%Y-%m-%d').strftime('%b %d')
+        slides.append(f'''
+        <div class="slide">
+            <div class="slide-label">// MESSAGE MARATHON</div>
+            <div class="slide-text">most unhinged single-day convo</div>
+            <div class="huge-name cyan">{n(mm['handle'])}</div>
+            <div class="big-number yellow">{mm['count']:,}</div>
+            <div class="slide-text">messages on {mm_date} across {mm['hours']}h</div>
+            <div class="slide-text" style="max-width:420px;">counted only 1:1 chats; duration is first to last ping that day</div>
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_marathon.png', this)">📸 Save</button>
+            <div class="slide-watermark">wrap2025.com</div>
+        </div>''')
+
+    # Slide 14: 3AM Bestie
     if d['late']:
         ln = d['late'][0]
         slides.append(f'''
@@ -769,7 +802,7 @@ def gen_html(d, contacts, path):
             <div class="slide-watermark">wrap2025.com</div>
         </div>''')
 
-    # Slide 13: Busiest Day
+    # Slide 15: Busiest Day
     if d['busiest_day']:
         top_busiest_html = ''
         if busiest_top:
@@ -1011,6 +1044,10 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .rank-num {{ font-family:var(--font-mono); font-size:20px; font-weight:600; color:var(--green); width:36px; text-align:center; }}
 .rank-name {{ flex:1; font-size:16px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .rank-count {{ font-family:var(--font-mono); font-size:18px; font-weight:600; color:var(--yellow); }}
+.rank-list.inner-list .hidden-inner {{ display:none; }}
+.rank-list.inner-list.show-all .hidden-inner {{ display:flex; }}
+.rank-list.group-list .hidden-group {{ display:none; }}
+.rank-list.group-list.show-all .hidden-group {{ display:flex; }}
 .rank-list.busiest-list .hidden-busiest {{ display:none; }}
 .rank-list.busiest-list.show-all .hidden-busiest {{ display:flex; }}
 .toggle-busiest-btn {{
@@ -1396,6 +1433,22 @@ const slides = gallery.querySelectorAll('.slide');
 function toggleBusiest(btn) {{
     const slide = btn.closest('.slide');
     const list = slide ? slide.querySelector('.busiest-list') : null;
+    if (!list) return;
+    const expanded = list.classList.toggle('show-all');
+    btn.textContent = expanded ? 'Show top 5 only' : 'Show full top 10';
+}}
+
+function toggleInner(btn) {{
+    const slide = btn.closest('.slide');
+    const list = slide ? slide.querySelector('.inner-list') : null;
+    if (!list) return;
+    const expanded = list.classList.toggle('show-all');
+    btn.textContent = expanded ? 'Show top 5 only' : 'Show full top 10';
+}}
+
+function toggleGroup(btn) {{
+    const slide = btn.closest('.slide');
+    const list = slide ? slide.querySelector('.group-list') : null;
     if (!list) return;
     const expanded = list.classList.toggle('show-all');
     btn.textContent = expanded ? 'Show top 5 only' : 'Show full top 10';
