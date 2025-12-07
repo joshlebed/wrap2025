@@ -871,6 +871,10 @@ kbd {
     background: #25D366;
 }
 
+.platform-tab.active.combined {
+    background: linear-gradient(90deg, var(--green), #25D366);
+}
+
 .platform-tab .icon {
     font-size: 14px;
 }
@@ -1216,6 +1220,10 @@ kbd {
                 <span class="icon">💬</span>
                 <span>WhatsApp</span>
             </button>
+            <button class="platform-tab combined" onclick="selectPlatform('combined')">
+                <span class="icon">📱💬</span>
+                <span>Combined</span>
+            </button>
         </div>
 
         <div id="imessage-install" class="platform-content active">
@@ -1303,6 +1311,54 @@ kbd {
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div id="combined-install" class="platform-content">
+            <div class="steps-list">
+                <div class="step-item">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h3>Open Terminal</h3>
+                        <p>Press <kbd>⌘</kbd> + <kbd>Space</kbd>, type "Terminal", hit Enter</p>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h3>Grant disk access</h3>
+                        <p>System Settings → Privacy & Security → Full Disk Access → click the <kbd>+</kbd> button → navigate to Applications/Utilities/Terminal</p>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h3>Download the script</h3>
+                        <p>Paste in Terminal and hit Enter, or <a href="#" onclick="downloadScript(true); return false;" style="color: var(--green); text-decoration: underline;">download here</a>:</p>
+                        <div class="code-block">
+                            <code id="curl-cmd-combined">curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/combined_wrapped.py</code>
+                            <button class="copy-btn" onclick="copyCode('curl-cmd-combined', this)">COPY</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <h3>Run it</h3>
+                        <p>Paste in Terminal and hit Enter:</p>
+                        <div class="code-block">
+                            <code id="run-cmd-combined">python3 combined_wrapped.py</code>
+                            <button class="copy-btn" onclick="copyCode('run-cmd-combined', this)">COPY</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="combined-note" style="background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.2); border-radius: 12px; padding: 16px 20px; margin-top: 24px; font-size: 14px;">
+                <strong style="color: var(--green);">📱💬 Combined Mode</strong><br>
+                Merges stats from both iMessage and WhatsApp. Uses your AddressBook to reconcile contacts across platforms. Works even if you only have one platform installed.
             </div>
         </div>
 
@@ -1408,15 +1464,21 @@ function selectPlatform(platform) {
 
     // Update all platform tabs
     document.querySelectorAll('.platform-tab').forEach(tab => {
-        const isActive = tab.textContent.toLowerCase().includes(platform === 'imessage' ? 'imessage' : 'whatsapp');
+        const tabText = tab.textContent.toLowerCase();
+        let isActive = false;
+        if (platform === 'imessage') isActive = tabText.includes('imessage');
+        else if (platform === 'whatsapp') isActive = tabText.includes('whatsapp') && !tabText.includes('combined');
+        else if (platform === 'combined') isActive = tabText.includes('combined');
         tab.classList.toggle('active', isActive);
     });
 
     // Update install content
     const imessageInstall = document.getElementById('imessage-install');
     const whatsappInstall = document.getElementById('whatsapp-install');
+    const combinedInstall = document.getElementById('combined-install');
     if (imessageInstall) imessageInstall.classList.toggle('active', platform === 'imessage');
     if (whatsappInstall) whatsappInstall.classList.toggle('active', platform === 'whatsapp');
+    if (combinedInstall) combinedInstall.classList.toggle('active', platform === 'combined');
 
     // Save preference
     localStorage.setItem('platform', platform);
@@ -1562,7 +1624,7 @@ async function downloadScript(skipScroll = false) {
     const btn = document.querySelector('.download-btn');
     const originalContent = btn ? btn.innerHTML : null;
 
-    const scriptName = currentPlatform === 'whatsapp' ? 'whatsapp_wrapped.py' : 'imessage_wrapped.py';
+    const scriptName = currentPlatform === 'whatsapp' ? 'whatsapp_wrapped.py' : currentPlatform === 'combined' ? 'combined_wrapped.py' : 'imessage_wrapped.py';
     const scriptUrl = `https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/${scriptName}`;
 
     try {
@@ -1654,9 +1716,9 @@ async function copyScriptForReview() {
     const btnIcon = btn.querySelector('.verify-btn-icon');
     const originalText = btnText.textContent;
 
-    const scriptName = currentPlatform === 'whatsapp' ? 'whatsapp_wrapped.py' : 'imessage_wrapped.py';
+    const scriptName = currentPlatform === 'whatsapp' ? 'whatsapp_wrapped.py' : currentPlatform === 'combined' ? 'combined_wrapped.py' : 'imessage_wrapped.py';
     const scriptUrl = `https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/${scriptName}`;
-    const dbType = currentPlatform === 'whatsapp' ? 'WhatsApp database' : 'iMessage database and AddressBook';
+    const dbType = currentPlatform === 'whatsapp' ? 'WhatsApp database' : currentPlatform === 'combined' ? 'iMessage database, WhatsApp database, and AddressBook' : 'iMessage database and AddressBook';
 
     try {
         btnText.textContent = 'Fetching script...';
@@ -1722,7 +1784,7 @@ ${scriptContent}`;
 
 // Share functionality for mobile
 async function shareLink() {
-    const platform = currentPlatform === 'whatsapp' ? 'WhatsApp' : 'iMessage';
+    const platform = currentPlatform === 'whatsapp' ? 'WhatsApp' : currentPlatform === 'combined' ? 'Combined' : 'iMessage';
     const shareData = {
         title: `${platform} Wrapped 2025`,
         text: `See your 2025 ${platform} texting stats! Run this on your Mac:`,

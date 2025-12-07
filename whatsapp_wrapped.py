@@ -1420,6 +1420,10 @@ async function takeScreenshot() {{
     const btn = document.querySelector('.screenshot-btn');
     btn.innerHTML = '<span>Saving...</span>';
     btn.disabled = true;
+    // Force visibility for screenshot capture
+    card.style.opacity = '1';
+    card.style.transform = 'none';
+    await new Promise(r => setTimeout(r, 100));
     try {{
         const canvas = await html2canvas(card, {{ backgroundColor:'#0d1f0f', scale:2, logging:false, useCORS:true }});
         const link = document.createElement('a');
