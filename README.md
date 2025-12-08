@@ -18,6 +18,7 @@ Your texting habits, exposed. A Spotify Wrapped-style visualization of your iMes
 - **Who texts first** - conversation initiator %
 - **Group chat stats** - your group chat activity overview
 - **Top group chats** - your most active group conversations
+- **Contribution graph** - GitHub-style activity heatmap of your messaging throughout the year
 
 ## Installation
 
@@ -69,6 +70,39 @@ python3 whatsapp_wrapped.py
 
 ---
 
+### Combined Wrapped (iMessage + WhatsApp)
+
+Merges stats from both platforms into a single unified report.
+
+#### 1. Download the script
+
+```bash
+curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/combined_wrapped.py
+```
+
+#### 2. Grant Terminal access
+
+The script needs to read both message databases:
+
+**System Settings -> Privacy & Security -> Full Disk Access -> Add Terminal**
+
+(Or iTerm/Warp if you use those)
+
+#### 3. Run it
+
+```bash
+python3 combined_wrapped.py
+```
+
+The combined script will:
+- Analyze both iMessage and WhatsApp data
+- Use your AddressBook to reconcile contacts across platforms
+- Merge top contacts, group chats, and all other stats
+- Show a platform breakdown slide
+- Work even if you only have one platform installed
+
+---
+
 Your wrapped will open in your browser automatically.
 
 ## Options
@@ -77,10 +111,12 @@ Your wrapped will open in your browser automatically.
 # Use 2024 data instead of 2025
 python3 imessage_wrapped.py --use-2024
 python3 whatsapp_wrapped.py --use-2024
+python3 combined_wrapped.py --use-2024
 
 # Custom output filename
 python3 imessage_wrapped.py -o my_wrapped.html
 python3 whatsapp_wrapped.py -o my_wrapped.html
+python3 combined_wrapped.py -o my_wrapped.html
 ```
 
 If you don't have enough 2025 messages yet, the script will automatically fall back to 2024.
@@ -111,7 +147,15 @@ The script reads your local `chat.db` (iMessage database) and `AddressBook` (Con
 ### WhatsApp
 The script reads your local `ChatStorage.sqlite` (WhatsApp database) using SQLite queries. WhatsApp stores contact names directly in the database.
 
-Both scripts analyze your message patterns, resolve identifiers to contact names, and generate a self-contained HTML file with an interactive gallery.
+### Combined
+The combined script reads both databases and merges the data:
+- Uses AddressBook contacts to reconcile names across platforms
+- Combines message counts, response times, and other stats
+- Merges top contacts (deduplicating by name when possible)
+- Shows platform breakdown with message counts per platform
+- Works even if only one platform is available
+
+All scripts analyze your message patterns, resolve identifiers to contact names, and generate a self-contained HTML file with an interactive gallery.
 
 ## FAQ
 

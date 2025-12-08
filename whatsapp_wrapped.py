@@ -4,7 +4,7 @@ WhatsApp Wrapped 2025 - Your texting habits, exposed.
 Usage: python3 whatsapp_wrapped.py
 """
 
-import sqlite3, os, sys, re, subprocess, argparse, glob
+import sqlite3, os, sys, re, subprocess, argparse, glob, threading, time
 from datetime import datetime
 
 # WhatsApp database locations (try in order)
@@ -13,6 +13,38 @@ WHATSAPP_PATHS = [
     os.path.expanduser("~/Library/Containers/com.whatsapp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite"),
     os.path.expanduser("~/Library/Containers/desktop.WhatsApp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite"),
 ]
+
+class Spinner:
+    """Animated terminal spinner for long operations"""
+    def __init__(self, message=""):
+        self.message = message
+        self.spinning = False
+        self.thread = None
+        self.frames = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷']
+
+    def spin(self):
+        i = 0
+        while self.spinning:
+            frame = self.frames[i % len(self.frames)]
+            print(f"\r    {frame} {self.message}", end='', flush=True)
+            time.sleep(0.1)
+            i += 1
+
+    def start(self, message=None):
+        if message:
+            self.message = message
+        self.spinning = True
+        self.thread = threading.Thread(target=self.spin)
+        self.thread.start()
+
+    def stop(self, final_message=None):
+        self.spinning = False
+        if self.thread:
+            self.thread.join()
+        if final_message:
+            print(f"\r    ✓ {final_message}".ljust(60))
+        else:
+            print()
 
 # Timestamps: Apple Cocoa Core Data Time (seconds since Jan 1, 2001)
 # Add 978307200 to convert to Unix timestamp
@@ -281,6 +313,61 @@ def analyze(ts_start, ts_jun):
     elif d['starter_pct'] < 35: d['personality'] = ("THE WAITER", "never texts first, ever")
     else: d['personality'] = ("SUSPICIOUSLY NORMAL", "no notes. boring but stable.")
 
+    # === CONTRIBUTION GRAPH DATA ===
+    # Get daily message counts for the year
+    daily_counts = q(f"""
+        SELECT DATE(datetime(ZMESSAGEDATE+{COCOA_OFFSET},'unixepoch','localtime')) as d, COUNT(*) as c
+        FROM ZWAMESSAGE
+        WHERE ZMESSAGEDATE>{ts_start}
+        GROUP BY d
+        ORDER BY d
+    """)
+    d['daily_counts'] = {row[0]: row[1] for row in daily_counts}
+
+    # Calculate streaks and stats
+    from datetime import datetime as dt, timedelta
+    if d['daily_counts']:
+        all_counts = list(d['daily_counts'].values())
+        d['max_daily'] = max(all_counts) if all_counts else 0
+        d['active_days'] = len([c for c in all_counts if c > 0])
+
+        # Top 5 most active days
+        sorted_days = sorted(d['daily_counts'].items(), key=lambda x: -x[1])[:5]
+        d['top_days'] = sorted_days
+
+        # Average messages per active day
+        d['avg_daily'] = round(sum(all_counts) / max(len(all_counts), 1))
+
+        # Find busiest month
+        monthly_counts = {}
+        for date_str, count in d['daily_counts'].items():
+            month_key = date_str[:7]  # "2025-03" format
+            monthly_counts[month_key] = monthly_counts.get(month_key, 0) + count
+        if monthly_counts:
+            busiest_month_key = max(monthly_counts, key=monthly_counts.get)
+            d['busiest_month'] = dt.strptime(busiest_month_key, '%Y-%m').strftime('%b')
+            d['busiest_month_count'] = monthly_counts[busiest_month_key]
+        else:
+            d['busiest_month'] = 'N/A'
+            d['busiest_month_count'] = 0
+
+        # Calculate quiet days (days with 0 messages in the year so far)
+        first_data_date = min(d['daily_counts'].keys())
+        last_data_date = max(d['daily_counts'].keys())
+        first_dt = dt.strptime(first_data_date, '%Y-%m-%d').date()
+        last_dt = dt.strptime(last_data_date, '%Y-%m-%d').date()
+        total_days_in_range = (last_dt - first_dt).days + 1
+        d['quiet_days'] = total_days_in_range - d['active_days']
+    else:
+        d['daily_counts'] = {}
+        d['max_daily'] = 0
+        d['active_days'] = 0
+        d['top_days'] = []
+        d['avg_daily'] = 0
+        d['busiest_month'] = 'N/A'
+        d['busiest_month_count'] = 0
+        d['quiet_days'] = 0
+
     # === GROUP CHAT STATS ===
     group_chat_cte = """
         WITH group_sessions AS (
@@ -413,7 +500,123 @@ def gen_html(d, contacts, path):
         <div class="slide-watermark">wrap2025.com</div>
     </div>''')
 
-    # Slide 4: Your #1
+    # Slide 4: Contribution Graph (GitHub-style activity heatmap) - Year overview
+    if d['daily_counts']:
+        from datetime import datetime as dt, date as ddate, timedelta
+        today = dt.now().date()
+        year = int(d.get('year', today.year))
+        year_start = ddate(year, 1, 1)
+        # Show up to today for the current year, else finish on Dec 31 of that year
+        year_end = today if year == today.year else ddate(year, 12, 31)
+
+        # Build the calendar grid (weeks x 7 days, GitHub style Sunday→Saturday)
+        cal_cells = []
+
+        # Find the Sunday on or before Jan 1
+        first_day = year_start - timedelta(days=(year_start.weekday() + 1) % 7)
+        # Find the Saturday of the last week that contains year_end
+        last_day = year_end + timedelta(days=(5 - year_end.weekday()) % 7)
+
+        current_date = first_day
+        max_count = max(d['daily_counts'].values()) if d['daily_counts'] else 1
+
+        # Month labels - track when months start
+        month_labels = []
+        last_month = None
+
+        week_idx = 0
+        while current_date <= last_day:
+            week_cells = []
+            for _ in range(7):  # Sun to Sat
+                date_str = current_date.strftime('%Y-%m-%d')
+                count = d['daily_counts'].get(date_str, 0)
+
+                # Track month changes for labels
+                if (year_start <= current_date <= year_end) and current_date.month != last_month:
+                    month_labels.append((week_idx, current_date.strftime('%b')))
+                    last_month = current_date.month
+
+                # Determine intensity level (0-4 like GitHub)
+                if count == 0:
+                    level = 0
+                elif count <= max_count * 0.25:
+                    level = 1
+                elif count <= max_count * 0.5:
+                    level = 2
+                elif count <= max_count * 0.75:
+                    level = 3
+                else:
+                    level = 4
+
+                # Only show cells for the target year
+                in_year = year_start <= current_date <= year_end
+                week_cells.append((date_str, count, level, in_year))
+                current_date += timedelta(days=1)
+
+            cal_cells.append(week_cells)
+            week_idx += 1
+            if week_idx > 60:  # Safety limit
+                break
+
+        # Build the HTML grid with proper structure
+        contrib_html = '<div class="contrib-graph">'
+        contrib_html += '<div class="contrib-container">'
+
+        # Y-axis: Day labels
+        contrib_html += '<div class="contrib-days"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>'
+
+        contrib_html += '<div class="contrib-main">'
+
+        # X-axis: Month labels - position based on week index, each week is 12px (10px cell + 2px gap)
+        contrib_html += '<div class="contrib-months">'
+        for week_num, month_name in month_labels:
+            # Position each month label at the start of its first week
+            left_px = week_num * 12  # 10px cell + 2px gap
+            contrib_html += f'<span style="position:absolute;left:{left_px}px">{month_name}</span>'
+        contrib_html += '</div>'
+
+        # Grid of cells
+        contrib_html += '<div class="contrib-grid">'
+        for week in cal_cells:
+            contrib_html += '<div class="contrib-week">'
+            for date_str, count, level, in_year in week:
+                if in_year:
+                    # Format date nicely for tooltip (e.g., "Dec 7, 2025")
+                    from datetime import datetime as dt_parse
+                    try:
+                        date_obj = dt_parse.strptime(date_str, '%Y-%m-%d')
+                        formatted_date = date_obj.strftime('%b %d, %Y')
+                    except:
+                        formatted_date = date_str
+                    msg_text = "message" if count == 1 else "messages"
+                    contrib_html += f'<div class="contrib-cell level-{level}" data-date="{formatted_date}" data-count="{count}" data-msg-text="{msg_text}"></div>'
+                else:
+                    contrib_html += '<div class="contrib-cell empty"></div>'
+            contrib_html += '</div>'
+        contrib_html += '</div>'
+
+        contrib_html += '</div>'  # close contrib-main
+        contrib_html += '</div>'  # close contrib-container
+
+        # Legend
+        contrib_html += '<div class="contrib-legend"><span>Less</span><div class="contrib-cell level-0"></div><div class="contrib-cell level-1"></div><div class="contrib-cell level-2"></div><div class="contrib-cell level-3"></div><div class="contrib-cell level-4"></div><span>More</span></div>'
+        contrib_html += '</div>'
+
+        slides.append(f'''
+        <div class="slide contrib-slide">
+            <div class="slide-label">// MESSAGE ACTIVITY</div>
+            <div class="slide-text">your texting throughout the year</div>
+            {contrib_html}
+            <div class="contrib-stats">
+                <div class="contrib-stat"><span class="contrib-stat-num">{d['avg_daily']}</span><span class="contrib-stat-lbl">avg/day</span></div>
+                <div class="contrib-stat"><span class="contrib-stat-num">{d['busiest_month']}</span><span class="contrib-stat-lbl">busiest month</span></div>
+                <div class="contrib-stat"><span class="contrib-stat-num">{d['quiet_days']}</span><span class="contrib-stat-lbl">quiet days</span></div>
+            </div>
+            <button class="slide-save-btn" onclick="saveSlide(this.parentElement, 'wrapped_contribution_graph.png', this)">📸 Save</button>
+            <div class="slide-watermark">wrap2025.com</div>
+        </div>''')
+
+    # Slide 5: Your #1
     if top:
         slides.append(f'''
         <div class="slide whatsapp-bg">
@@ -679,8 +882,10 @@ def gen_html(d, contacts, path):
 <title>WhatsApp Wrapped 2025</title>
 <link rel="icon" href="{favicon}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Azeret+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen&family=Azeret+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap');
 
 :root {{
     --bg: #0a0a12;
@@ -728,6 +933,35 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide.orange-bg {{ background:linear-gradient(145deg,#12121f 0%,#2d1f1a 100%); }}
 .slide.red-bg {{ background:linear-gradient(145deg,#12121f 0%,#2d1a1a 100%); }}
 .slide.summary-slide {{ background:linear-gradient(145deg,#0d1f0f 0%,#12121f 50%,#1a1a2e 100%); }}
+.slide.contrib-slide {{ background:linear-gradient(145deg,#12121f 0%,#0d1f1a 100%); padding:24px 16px 80px; }}
+
+/* === CONTRIBUTION GRAPH STYLES === */
+.contrib-graph {{ display:flex; flex-direction:column; align-items:center; margin:20px auto; padding:0 8px; }}
+.contrib-container {{ display:flex; gap:4px; }}
+.contrib-days {{ display:flex; flex-direction:column; gap:2px; font-size:9px; color:var(--muted); padding-top:20px; min-width:28px; text-align:right; padding-right:4px; }}
+.contrib-days span {{ height:10px; line-height:10px; }}
+.contrib-main {{ display:flex; flex-direction:column; }}
+.contrib-months {{ position:relative; height:16px; margin-bottom:4px; font-size:10px; color:var(--muted); }}
+.contrib-months span {{ position:absolute; white-space:nowrap; }}
+.contrib-grid {{ display:flex; gap:2px; }}
+.contrib-week {{ display:flex; flex-direction:column; gap:2px; }}
+.contrib-cell {{ width:10px; height:10px; border-radius:2px; background:rgba(255,255,255,0.05); }}
+.contrib-cell.empty {{ background:transparent; }}
+.contrib-cell.level-0 {{ background:rgba(255,255,255,0.12); }}
+.contrib-cell.level-1 {{ background:rgba(37,211,102,0.25); }}
+.contrib-cell.level-2 {{ background:rgba(37,211,102,0.45); }}
+.contrib-cell.level-3 {{ background:rgba(37,211,102,0.70); }}
+.contrib-cell.level-4 {{ background:var(--whatsapp); }}
+.contrib-cell:not(.empty) {{ cursor:pointer; position:relative; }}
+.contrib-tooltip {{ position:fixed; background:rgba(20,20,30,0.95); color:var(--text); padding:8px 12px; border-radius:6px; font-size:12px; pointer-events:none; z-index:1000; white-space:nowrap; border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.3); }}
+.contrib-tooltip .tooltip-count {{ font-family:var(--font-mono); color:var(--whatsapp); font-weight:600; }}
+.contrib-tooltip .tooltip-date {{ color:var(--muted); font-size:11px; margin-top:2px; }}
+.contrib-legend {{ display:flex; align-items:center; justify-content:center; gap:4px; margin-top:12px; font-size:10px; color:var(--muted); }}
+.contrib-legend .contrib-cell {{ cursor:default; }}
+.contrib-stats {{ display:flex; gap:32px; margin-top:24px; justify-content:center; }}
+.contrib-stat {{ display:flex; flex-direction:column; align-items:center; }}
+.contrib-stat-num {{ font-family:var(--font-mono); font-size:28px; font-weight:600; color:var(--whatsapp); }}
+.contrib-stat-lbl {{ font-size:11px; color:var(--muted); margin-top:4px; text-transform:uppercase; letter-spacing:0.5px; }}
 
 .slide h1 {{ font-family:var(--font-pixel); font-size:36px; font-weight:400; line-height:1.2; margin:20px 0; }}
 .slide-label {{ font-family:var(--font-pixel); font-size:12px; font-weight:400; color:var(--whatsapp); letter-spacing:0.5px; margin-bottom:16px; }}
@@ -790,7 +1024,9 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 .slide .emoji-row,
 .slide h1,
 .slide .subtitle,
-.slide .summary-card {{
+.slide .summary-card,
+.slide .contrib-graph,
+.slide .contrib-stats {{
     opacity: 0;
     transform: translateY(20px);
 }}
@@ -859,6 +1095,14 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 
 /* === SUMMARY SLIDE - Clean rise === */
 .slide.summary-slide.active .summary-card {{ animation: cardRise 0.6s ease-out 0.1s forwards; }}
+
+/* === CONTRIBUTION GRAPH SLIDE - Grid reveal === */
+.slide.contrib-slide.active .contrib-graph {{ animation: graphReveal 0.8s ease-out 0.15s forwards; }}
+.slide.contrib-slide.active .contrib-stats {{ animation: none; opacity: 1; transform: none; }}
+.slide.contrib-slide.active .contrib-stat {{ animation: statFade 0.35s ease-out forwards; }}
+.slide.contrib-slide.active .contrib-stat:nth-child(1) {{ animation-delay: 0.5s; }}
+.slide.contrib-slide.active .contrib-stat:nth-child(2) {{ animation-delay: 0.6s; }}
+.slide.contrib-slide.active .contrib-stat:nth-child(3) {{ animation-delay: 0.7s; }}
 
 /* ===== KEYFRAMES ===== */
 
@@ -946,6 +1190,12 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 @keyframes cardRise {{
     0% {{ opacity: 0; transform: translateY(40px); }}
     100% {{ opacity: 1; transform: translateY(0); }}
+}}
+
+/* Graph reveal - for contribution graph */
+@keyframes graphReveal {{
+    0% {{ opacity: 0; transform: translateY(30px) scale(0.95); }}
+    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
 }}
 
 /* Simple slide up */
@@ -1086,6 +1336,16 @@ body {{ font-family:'Space Grotesk',sans-serif; background:var(--bg); color:var(
 }}
 .slide.active .slide-save-btn {{ opacity:1; }}
 .slide-save-btn:hover {{ background:rgba(37,211,102,0.25); border-color:var(--whatsapp); }}
+
+/* Force all elements visible for screenshot capture */
+.slide.capturing,
+.slide.capturing * {{
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    clip-path: none !important;
+}}
 .slide-watermark {{
     position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
     font-family:var(--font-pixel); font-size:10px; color:var(--whatsapp); opacity:0.6;
@@ -1160,6 +1420,10 @@ async function takeScreenshot() {{
     const btn = document.querySelector('.screenshot-btn');
     btn.innerHTML = '<span>Saving...</span>';
     btn.disabled = true;
+    // Force visibility for screenshot capture
+    card.style.opacity = '1';
+    card.style.transform = 'none';
+    await new Promise(r => setTimeout(r, 100));
     try {{
         const canvas = await html2canvas(card, {{ backgroundColor:'#0d1f0f', scale:2, logging:false, useCORS:true }});
         const link = document.createElement('a');
@@ -1177,12 +1441,24 @@ async function takeScreenshot() {{
 async function saveSlide(slideEl, filename, btn) {{
     btn.innerHTML = '⏳';
     btn.disabled = true;
+
+    // Show watermark for screenshot
     const watermark = slideEl.querySelector('.slide-watermark');
     if (watermark) watermark.style.display = 'block';
-    btn.style.opacity = '0';
+
+    // Hide the save button temporarily
+    btn.style.visibility = 'hidden';
+
+    // Add capturing class to force all animations to final state
+    slideEl.classList.add('capturing');
+
+    // Wait for browser to apply styles
+    await new Promise(r => setTimeout(r, 50));
+
     // Get computed background color (html2canvas has issues with CSS variables)
     const computedBg = getComputedStyle(slideEl).backgroundColor;
     const bgColor = computedBg && computedBg !== 'rgba(0, 0, 0, 0)' ? computedBg : '#0a0a12';
+
     try {{
         const canvas = await html2canvas(slideEl, {{
             backgroundColor: bgColor,
@@ -1192,19 +1468,64 @@ async function saveSlide(slideEl, filename, btn) {{
             width: slideEl.offsetWidth,
             height: slideEl.offsetHeight
         }});
+
+        // Create a square canvas centered on content
+        const size = Math.min(canvas.width, canvas.height);
+        const squareCanvas = document.createElement('canvas');
+        squareCanvas.width = size;
+        squareCanvas.height = size;
+        const ctx = squareCanvas.getContext('2d');
+
+        // Fill with background color
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, size, size);
+
+        // Calculate crop position (center of original)
+        const srcX = (canvas.width - size) / 2;
+        const srcY = (canvas.height - size) / 2;
+
+        // Draw centered portion
+        ctx.drawImage(canvas, srcX, srcY, size, size, 0, 0, size, size);
+
         const link = document.createElement('a');
         link.download = filename;
-        link.href = canvas.toDataURL('image/png');
+        link.href = squareCanvas.toDataURL('image/png');
         link.click();
         btn.innerHTML = '✓';
-        setTimeout(() => {{ btn.innerHTML = '📸 Save'; btn.disabled = false; btn.style.opacity = '1'; }}, 2000);
+        setTimeout(() => {{ btn.innerHTML = '📸 Save'; btn.disabled = false; btn.style.visibility = 'visible'; }}, 2000);
     }} catch (err) {{
         btn.innerHTML = '📸 Save';
         btn.disabled = false;
-        btn.style.opacity = '1';
+        btn.style.visibility = 'visible';
     }}
+
+    // Remove capturing class and hide watermark
+    slideEl.classList.remove('capturing');
     if (watermark) watermark.style.display = 'none';
 }}
+
+// Contribution graph tooltip
+const tooltip = document.createElement('div');
+tooltip.className = 'contrib-tooltip';
+tooltip.style.display = 'none';
+document.body.appendChild(tooltip);
+
+document.querySelectorAll('.contrib-cell[data-date]').forEach(cell => {{
+    cell.addEventListener('mouseenter', (e) => {{
+        const count = cell.dataset.count;
+        const date = cell.dataset.date;
+        const msgText = cell.dataset.msgText;
+        tooltip.innerHTML = `<div class="tooltip-count">${{count}} ${{msgText}}</div><div class="tooltip-date">${{date}}</div>`;
+        tooltip.style.display = 'block';
+    }});
+    cell.addEventListener('mousemove', (e) => {{
+        tooltip.style.left = (e.clientX + 12) + 'px';
+        tooltip.style.top = (e.clientY - 10) + 'px';
+    }});
+    cell.addEventListener('mouseleave', () => {{
+        tooltip.style.display = 'none';
+    }});
+}});
 
 goTo(0);
 </script>
@@ -1240,15 +1561,18 @@ def main():
         ts_start, ts_jun = TS_2024, TS_JUN_2024
         year = "2024"
 
+    spinner = Spinner()
+
     print(f"[*] Analyzing {year}...")
-    print("    ⏳ Reading message database...", end='', flush=True)
+    spinner.start("Reading message database...")
     data = analyze(ts_start, ts_jun)
-    print(f"\r    ✓ {data['stats'][0]:,} messages analyzed    ")
+    data['year'] = int(year)  # Pass the year to gen_html
+    spinner.stop(f"{data['stats'][0]:,} messages analyzed")
 
     print(f"[*] Generating report...")
-    print("    ⏳ Building your wrapped...", end='', flush=True)
+    spinner.start("Building your wrapped...")
     gen_html(data, contacts, args.output)
-    print(f"\r    ✓ Saved to {args.output}       ")
+    spinner.stop(f"Saved to {args.output}")
 
     subprocess.run(['open', args.output])
     print("\n  Done! Click through your wrapped.\n")
