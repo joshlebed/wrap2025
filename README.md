@@ -18,6 +18,7 @@ Your texting habits, exposed. A Spotify Wrapped-style visualization of your iMes
 - **Vibe check** – who’s heating up (H2 > H1) vs ghosted (dropped after June)
 - **Biggest fan / Down bad** – who texts you most vs who you text most
 - **Peak hours** – most active day/hour
+- **Contribution graph** – GitHub-style activity heatmap
 - **Top emojis** – your most-used emoji lineup
 
 ## Installation
