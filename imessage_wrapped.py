@@ -1899,7 +1899,7 @@ def main():
 
     print(f"[*] Analyzing {year}...")
     spinner.start("Reading message database...")
-    data = analyze(ts_start, ts_jun)
+    data = analyze(ts_start, ts_jun, contacts)
     data['year'] = int(year)  # Pass the year to gen_html
     spinner.stop(f"{data['stats'][0]:,} messages analyzed")
 
