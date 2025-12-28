@@ -665,27 +665,28 @@ def generate_html(contacts_with_summaries, year, output_path):
         summary_html = f'<p>{summary_html}</p>'
 
         slide = f'''
-    <div class="slide" data-index="{i}">
+    <div class="slide person" data-index="{i}">
+      <div class="slide-label">// #{i + 1} - {' + '.join(platform_icons).upper()}</div>
       <div class="slide-header">
-        <div class="rank">#{i + 1}</div>
         <div class="contact-photo">
           <img src="{photo}" alt="{name}">
         </div>
         <h2 class="contact-name">{name}</h2>
         <div class="stats-bar">
-          <span class="stat">{total:,} msgs</span>
-          <span class="stat">{' + '.join(platform_icons)}</span>
-          <span class="stat">{sent:,} sent / {received:,} received</span>
+          <span class="stat"><span class="num">{total:,}</span> messages</span>
+          <span class="stat"><span class="num">{sent:,}</span> sent</span>
+          <span class="stat"><span class="num">{received:,}</span> received</span>
         </div>
       </div>
       <div class="summary-content">
         {summary_html}
       </div>
-      <div class="slide-footer">
-        <span class="position">{i + 1} of {len(contacts_with_summaries)}</span>
-      </div>
+      <div class="slide-watermark">wrap2025.com</div>
     </div>'''
         slides_html.append(slide)
+
+    # Favicon as base64 SVG
+    favicon = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌯</text></svg>"
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -693,55 +694,120 @@ def generate_html(contacts_with_summaries, year, output_path):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>People Wrapped {year}</title>
+  <link rel="icon" href="{favicon}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Azeret+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
+    :root {{
+      --bg: #0a0a12;
+      --text: #f0f0f0;
+      --muted: #8892a0;
+      --green: #4ade80;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --cyan: #22d3ee;
+      --pink: #f472b6;
+      --orange: #fb923c;
+      --purple: #a78bfa;
+      --font-pixel: 'Silkscreen', cursive;
+      --font-mono: 'Azeret Mono', monospace;
+      --font-body: 'Space Grotesk', sans-serif;
+    }}
+
     * {{
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }}
+
+    html, body {{
+      height: 100%;
+      overflow: hidden;
     }}
 
     body {{
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0a0a0a;
-      color: #fff;
-      overflow: hidden;
-      height: 100vh;
-      width: 100vw;
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
     }}
 
-    .container {{
-      height: 100vh;
-      width: 100vw;
-      position: relative;
-      overflow: hidden;
-    }}
-
-    .slides-wrapper {{
+    .gallery {{
       display: flex;
       height: 100%;
-      transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
     }}
 
     .slide {{
+      position: relative;
       min-width: 100vw;
       height: 100vh;
       display: flex;
       flex-direction: column;
-      padding: 40px 30px;
-      background: linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 50%, #1a0a1a 100%);
+      padding: 40px 30px 100px;
+      background: var(--bg);
+      cursor: pointer;
+    }}
+
+    .slide.intro {{
+      background: linear-gradient(145deg, #12121f 0%, #1a1a2e 50%, #0f2847 100%);
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }}
+
+    .slide.person {{
+      background: linear-gradient(145deg, #12121f 0%, #1f1a3d 100%);
+    }}
+
+    /* Intro slide */
+    .slide.intro .slide-icon {{
+      font-size: 80px;
+      margin-bottom: 16px;
+    }}
+
+    .slide.intro h1 {{
+      font-family: var(--font-pixel);
+      font-size: 36px;
+      font-weight: 400;
+      line-height: 1.2;
+      margin: 20px 0;
+    }}
+
+    .slide.intro .subtitle {{
+      font-size: 18px;
+      color: var(--muted);
+      margin-top: 8px;
+    }}
+
+    .tap-hint {{
+      position: absolute;
+      bottom: 60px;
+      font-size: 16px;
+      color: var(--muted);
+      animation: pulse 2s infinite;
+    }}
+
+    @keyframes pulse {{
+      0%, 100% {{ opacity: 0.4; }}
+      50% {{ opacity: 1; }}
+    }}
+
+    /* Person slides */
+    .slide-label {{
+      font-family: var(--font-pixel);
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--purple);
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+      text-align: center;
     }}
 
     .slide-header {{
       text-align: center;
       flex-shrink: 0;
-    }}
-
-    .rank {{
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 15px;
-      text-transform: uppercase;
-      letter-spacing: 2px;
     }}
 
     .contact-photo {{
@@ -750,8 +816,8 @@ def generate_html(contacts_with_summaries, year, output_path):
       margin: 0 auto 15px;
       border-radius: 50%;
       overflow: hidden;
-      border: 3px solid rgba(255, 255, 255, 0.2);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      border: 3px solid rgba(167, 139, 250, 0.4);
+      box-shadow: 0 4px 20px rgba(167, 139, 250, 0.2);
     }}
 
     .contact-photo img {{
@@ -761,38 +827,43 @@ def generate_html(contacts_with_summaries, year, output_path):
     }}
 
     .contact-name {{
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 10px;
-      background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      font-family: var(--font-body);
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text);
     }}
 
     .stats-bar {{
       display: flex;
       justify-content: center;
-      gap: 20px;
-      margin-bottom: 25px;
+      gap: 16px;
+      margin-bottom: 24px;
       flex-wrap: wrap;
     }}
 
     .stat {{
-      font-size: 13px;
-      color: #888;
-      padding: 5px 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+      padding: 6px 14px;
       background: rgba(255, 255, 255, 0.05);
       border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }}
+
+    .stat .num {{
+      color: var(--cyan);
+      font-weight: 600;
     }}
 
     .summary-content {{
       flex: 1;
       overflow-y: auto;
-      padding: 20px;
+      padding: 24px;
       background: rgba(255, 255, 255, 0.03);
       border-radius: 16px;
-      margin: 0 -10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
       scrollbar-width: thin;
       scrollbar-color: #333 transparent;
     }}
@@ -811,116 +882,104 @@ def generate_html(contacts_with_summaries, year, output_path):
     }}
 
     .summary-content p {{
-      font-size: 15px;
-      line-height: 1.7;
-      color: #ccc;
-      margin-bottom: 15px;
+      font-size: 16px;
+      line-height: 1.8;
+      color: var(--text);
+      margin-bottom: 18px;
+      opacity: 0.9;
     }}
 
     .summary-content p:last-child {{
       margin-bottom: 0;
     }}
 
-    .slide-footer {{
-      text-align: center;
-      padding-top: 20px;
-      flex-shrink: 0;
-    }}
-
-    .position {{
-      font-size: 12px;
-      color: #555;
-    }}
-
-    .nav-btn {{
-      position: fixed;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 50px;
-      height: 100px;
-      background: rgba(255, 255, 255, 0.05);
-      border: none;
-      color: #666;
-      font-size: 24px;
-      cursor: pointer;
-      z-index: 100;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }}
-
-    .nav-btn:hover {{
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-    }}
-
-    .nav-btn.prev {{
-      left: 0;
-      border-radius: 0 8px 8px 0;
-    }}
-
-    .nav-btn.next {{
-      right: 0;
-      border-radius: 8px 0 0 8px;
-    }}
-
-    .nav-btn:disabled {{
-      opacity: 0.2;
-      cursor: not-allowed;
-    }}
-
-    .thumbnails {{
-      position: fixed;
+    .slide-watermark {{
+      position: absolute;
       bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.2);
+      letter-spacing: 1px;
+    }}
+
+    /* Progress bar */
+    .progress-bar {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: var(--purple);
+      z-index: 200;
+      transition: width 0.3s ease;
+    }}
+
+    /* Navigation dots */
+    .nav-dots {{
+      position: fixed;
+      bottom: 40px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
       gap: 8px;
-      padding: 10px 15px;
-      background: rgba(0, 0, 0, 0.7);
-      border-radius: 25px;
       z-index: 100;
-      max-width: 90vw;
-      overflow-x: auto;
-      scrollbar-width: none;
     }}
 
-    .thumbnails::-webkit-scrollbar {{
-      display: none;
-    }}
-
-    .thumb {{
-      width: 36px;
-      height: 36px;
+    .nav-dot {{
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      overflow: hidden;
+      background: rgba(255, 255, 255, 0.2);
       cursor: pointer;
-      opacity: 0.5;
       transition: all 0.2s;
-      flex-shrink: 0;
-      border: 2px solid transparent;
     }}
 
-    .thumb:hover {{
-      opacity: 0.8;
+    .nav-dot:hover {{
+      background: rgba(255, 255, 255, 0.4);
     }}
 
-    .thumb.active {{
-      opacity: 1;
-      border-color: #fff;
-      transform: scale(1.1);
+    .nav-dot.active {{
+      background: var(--purple);
+      transform: scale(1.3);
     }}
 
-    .thumb img {{
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+    /* Slide animations */
+    .slide .slide-label,
+    .slide .contact-photo,
+    .slide .contact-name,
+    .slide .stats-bar,
+    .slide .summary-content,
+    .slide.intro .slide-icon,
+    .slide.intro h1,
+    .slide.intro .subtitle {{
+      opacity: 0;
+      transform: translateY(20px);
+    }}
+
+    .slide.active .slide-label {{ animation: fadeUp 0.4s ease-out 0.1s forwards; }}
+    .slide.active .contact-photo {{ animation: fadeUp 0.4s ease-out 0.15s forwards; }}
+    .slide.active .contact-name {{ animation: fadeUp 0.4s ease-out 0.2s forwards; }}
+    .slide.active .stats-bar {{ animation: fadeUp 0.4s ease-out 0.25s forwards; }}
+    .slide.active .summary-content {{ animation: fadeUp 0.4s ease-out 0.3s forwards; }}
+    .slide.intro.active .slide-icon {{ animation: iconPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }}
+    .slide.intro.active h1 {{ animation: fadeUp 0.5s ease-out 0.3s forwards; }}
+    .slide.intro.active .subtitle {{ animation: fadeUp 0.4s ease-out 0.45s forwards; }}
+
+    @keyframes fadeUp {{
+      0% {{ opacity: 0; transform: translateY(20px); }}
+      100% {{ opacity: 1; transform: translateY(0); }}
+    }}
+
+    @keyframes iconPop {{
+      0% {{ opacity: 0; transform: translateY(20px) scale(0.4) rotate(-15deg); }}
+      50% {{ transform: translateY(-8px) scale(1.15) rotate(8deg); }}
+      75% {{ transform: translateY(2px) scale(0.95) rotate(-3deg); }}
+      100% {{ opacity: 1; transform: translateY(0) scale(1) rotate(0); }}
     }}
 
     @media (max-width: 600px) {{
       .slide {{
-        padding: 30px 20px;
+        padding: 30px 20px 100px;
       }}
 
       .contact-photo {{
@@ -929,72 +988,55 @@ def generate_html(contacts_with_summaries, year, output_path):
       }}
 
       .contact-name {{
-        font-size: 24px;
+        font-size: 26px;
       }}
 
-      .nav-btn {{
-        width: 40px;
-        height: 80px;
-        font-size: 20px;
+      .summary-content {{
+        padding: 18px;
       }}
 
-      .thumbnails {{
-        bottom: 10px;
-        padding: 8px 12px;
-      }}
-
-      .thumb {{
-        width: 30px;
-        height: 30px;
+      .summary-content p {{
+        font-size: 15px;
       }}
     }}
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="slides-wrapper">
-      {''.join(slides_html)}
+  <div class="progress-bar" id="progressBar"></div>
+  <div class="gallery" id="gallery">
+    <div class="slide intro active">
+      <div class="slide-icon">👥</div>
+      <h1>PEOPLE<br>WRAPPED</h1>
+      <p class="subtitle">your top {len(contacts_with_summaries)} relationships of {year}</p>
+      <div class="tap-hint">click anywhere to start →</div>
     </div>
-
-    <button class="nav-btn prev" id="prevBtn">‹</button>
-    <button class="nav-btn next" id="nextBtn">›</button>
-
-    <div class="thumbnails" id="thumbnails"></div>
+    {''.join(slides_html)}
   </div>
+  <div class="nav-dots" id="navDots"></div>
 
   <script>
+    const gallery = document.getElementById('gallery');
     const slides = document.querySelectorAll('.slide');
-    const wrapper = document.querySelector('.slides-wrapper');
-    const prevBtn = document.getElementById('prevBtn');
-    const nextBtn = document.getElementById('nextBtn');
-    const thumbnails = document.getElementById('thumbnails');
+    const progressBar = document.getElementById('progressBar');
+    const navDots = document.getElementById('navDots');
 
     let currentIndex = 0;
     const total = slides.length;
 
-    const contacts = {json.dumps([{'name': c['name'], 'photo': c.get('photo') or generate_initials_svg(c['name'])} for c in contacts_with_summaries])};
-
-    contacts.forEach((contact, i) => {{
-      const thumb = document.createElement('div');
-      thumb.className = 'thumb' + (i === 0 ? ' active' : '');
-      thumb.innerHTML = `<img src="${{contact.photo}}" alt="${{contact.name}}">`;
-      thumb.onclick = () => goToSlide(i);
-      thumbnails.appendChild(thumb);
-    }});
+    // Create nav dots
+    for (let i = 0; i < total; i++) {{
+      const dot = document.createElement('div');
+      dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+      dot.onclick = () => goToSlide(i);
+      navDots.appendChild(dot);
+    }}
 
     function updateSlide() {{
-      wrapper.style.transform = `translateX(-${{currentIndex * 100}}vw)`;
-      prevBtn.disabled = currentIndex === 0;
-      nextBtn.disabled = currentIndex === total - 1;
+      gallery.style.transform = `translateX(-${{currentIndex * 100}}vw)`;
+      progressBar.style.width = `${{((currentIndex + 1) / total) * 100}}%`;
 
-      document.querySelectorAll('.thumb').forEach((t, i) => {{
-        t.classList.toggle('active', i === currentIndex);
-      }});
-
-      const activeThumb = thumbnails.children[currentIndex];
-      if (activeThumb) {{
-        activeThumb.scrollIntoView({{ behavior: 'smooth', inline: 'center', block: 'nearest' }});
-      }}
+      slides.forEach((s, i) => s.classList.toggle('active', i === currentIndex));
+      document.querySelectorAll('.nav-dot').forEach((d, i) => d.classList.toggle('active', i === currentIndex));
     }}
 
     function goToSlide(index) {{
@@ -1002,28 +1044,26 @@ def generate_html(contacts_with_summaries, year, output_path):
       updateSlide();
     }}
 
-    prevBtn.onclick = () => goToSlide(currentIndex - 1);
-    nextBtn.onclick = () => goToSlide(currentIndex + 1);
+    function next() {{ goToSlide(currentIndex + 1); }}
+    function prev() {{ goToSlide(currentIndex - 1); }}
+
+    // Click anywhere to advance
+    gallery.onclick = (e) => {{
+      const x = e.clientX / window.innerWidth;
+      if (x < 0.3) prev();
+      else next();
+    }};
 
     document.addEventListener('keydown', (e) => {{
-      if (e.key === 'ArrowLeft' || e.key === 'k') goToSlide(currentIndex - 1);
-      if (e.key === 'ArrowRight' || e.key === 'j' || e.key === ' ') goToSlide(currentIndex + 1);
+      if (e.key === 'ArrowLeft' || e.key === 'k') prev();
+      if (e.key === 'ArrowRight' || e.key === 'j' || e.key === ' ') next();
     }});
 
     let touchStartX = 0;
-    let touchEndX = 0;
-
-    document.addEventListener('touchstart', (e) => {{
-      touchStartX = e.changedTouches[0].screenX;
-    }});
-
+    document.addEventListener('touchstart', (e) => {{ touchStartX = e.changedTouches[0].screenX; }});
     document.addEventListener('touchend', (e) => {{
-      touchEndX = e.changedTouches[0].screenX;
-      const diff = touchStartX - touchEndX;
-      if (Math.abs(diff) > 50) {{
-        if (diff > 0) goToSlide(currentIndex + 1);
-        else goToSlide(currentIndex - 1);
-      }}
+      const diff = touchStartX - e.changedTouches[0].screenX;
+      if (Math.abs(diff) > 50) {{ diff > 0 ? next() : prev(); }}
     }});
 
     updateSlide();
