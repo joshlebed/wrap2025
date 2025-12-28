@@ -23,7 +23,7 @@ Note: The --dangerously-skip-permissions flag is needed because Claude Code writ
 
 ## How It Works
 
-1. Script extracts your top 25 contacts from iMessage/WhatsApp databases
+1. Script extracts your top 10 contacts from iMessage/WhatsApp databases (use --top 25 for more)
 2. Script prints "CLAUDE CODE: Please generate summaries..."
 3. Claude Code reads the message files and generates personalized summaries
 4. Script builds a beautiful swipeable HTML report
@@ -1266,7 +1266,7 @@ def main():
         epilog="""
 How it works:
   1. Run: python3 people_wrapped.py
-  2. Script extracts your top 25 contacts from iMessage/WhatsApp
+  2. Script extracts your top 10 contacts from iMessage/WhatsApp
   3. Claude Code generates personalized summaries (no API key needed)
   4. Script builds a beautiful swipeable HTML report
 
@@ -1276,13 +1276,16 @@ Commands:
   python3 people_wrapped.py summarize Show summary generation instructions
   python3 people_wrapped.py build     Just build HTML from existing data
   python3 people_wrapped.py status    Check progress
+
+Options:
+  --top N    Number of contacts to analyze (default: 10, max: 25)
 """
     )
     parser.add_argument('command', nargs='?', default='run',
                        choices=['run', 'extract', 'summarize', 'build', 'status'],
                        help='Command to run')
     parser.add_argument('--year', default='2025', help='Year to analyze')
-    parser.add_argument('--top', type=int, default=25, help='Number of top contacts')
+    parser.add_argument('--top', type=int, default=10, help='Number of top contacts (default: 10)')
 
     args = parser.parse_args()
 
