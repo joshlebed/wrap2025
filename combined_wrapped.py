@@ -121,6 +121,9 @@ def extract_whatsapp_contacts():
     return contacts
 
 def get_name_imessage(handle, contacts):
+    # Handle URN-style identifiers (business accounts, etc.)
+    if handle.startswith('urn:'):
+        return "Business Account"
     if '@' in handle:
         lookup = handle.lower().strip()
         if lookup in contacts: return contacts[lookup]
@@ -239,6 +242,7 @@ def analyze_imessage(ts_start, ts_jun):
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
         GROUP BY h.id ORDER BY t DESC LIMIT 20
     """)
 
@@ -249,6 +253,7 @@ def analyze_imessage(ts_start, ts_jun):
         AND CAST(strftime('%H',datetime((m.date/1000000000+978307200),'unixepoch','localtime')) AS INT)<5
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
         GROUP BY h.id HAVING n>5 ORDER BY n DESC LIMIT 10
     """)
 
@@ -268,6 +273,7 @@ def analyze_imessage(ts_start, ts_jun):
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
         GROUP BY h.id HAVING b>10 AND a<3 ORDER BY b DESC LIMIT 10
     """)
 
@@ -278,6 +284,7 @@ def analyze_imessage(ts_start, ts_jun):
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
         GROUP BY h.id HAVING h1>20 AND h2>h1*1.5 ORDER BY (h2-h1) DESC LIMIT 10
     """)
 
@@ -288,6 +295,7 @@ def analyze_imessage(ts_start, ts_jun):
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
         GROUP BY h.id HAVING t>y*2 AND (t+y)>100 ORDER BY (t*1.0/NULLIF(y,0)) DESC LIMIT 10
     """)
 
@@ -298,6 +306,7 @@ def analyze_imessage(ts_start, ts_jun):
         WHERE (m.date/1000000000+978307200)>{ts_start}
         AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
         AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
         GROUP BY h.id HAVING y>t*2 AND (t+y)>100 ORDER BY (y*1.0/NULLIF(t,0)) DESC LIMIT 10
     """)
 

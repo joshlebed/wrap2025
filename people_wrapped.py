@@ -271,6 +271,9 @@ def get_contact_photo(record_id):
     return None
 
 def get_name_imessage(handle, contacts):
+    # Handle URN-style identifiers (business accounts, etc.)
+    if handle.startswith('urn:'):
+        return "Business Account"
     if '@' in handle:
         lookup = handle.lower().strip()
         if lookup in contacts: return contacts[lookup]
@@ -287,6 +290,9 @@ def get_name_imessage(handle, contacts):
 
 def get_record_id_for_handle(handle, contact_record_ids):
     """Get AddressBook record ID for a handle."""
+    # URN-style identifiers (business accounts) don't have AddressBook records
+    if handle.startswith('urn:'):
+        return None
     if '@' in handle:
         lookup = handle.lower().strip()
         if lookup in contact_record_ids:
@@ -418,6 +424,7 @@ def get_top_contacts_combined(timestamps, top_n, has_imessage, has_whatsapp, ime
             WHERE (m.date/1000000000+{COCOA_OFFSET}) BETWEEN {ts_start_im} AND {ts_end_im}
             AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
             AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+            AND h.id NOT LIKE 'urn:%'
             GROUP BY h.id ORDER BY t DESC LIMIT 100
         """)
         for h, t, s, r in rows:
