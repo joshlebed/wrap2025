@@ -91,9 +91,6 @@ def extract_contacts():
     return contacts
 
 def get_name(handle, contacts):
-    # Handle URN-style identifiers (business accounts, etc.)
-    if handle.startswith('urn:'):
-        return "Business Account"
     if '@' in handle:
         lookup = handle.lower().strip()
         if lookup in contacts: return contacts[lookup]
@@ -333,10 +330,9 @@ def analyze(ts_start, ts_jun, contacts):
     d['resp'] = int(r[0][0] or 30)
     
     emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
-    counts = {}
-    for e in emojis:
-        r = q(f"SELECT COUNT(*) FROM message WHERE text LIKE '%{e}%' AND (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
-        counts[e] = r[0][0]
+    emoji_cases = ', '.join([f"SUM(CASE WHEN text LIKE '%{e}%' THEN 1 ELSE 0 END)" for e in emojis])
+    r = q(f"SELECT {emoji_cases} FROM message WHERE (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
+    counts = dict(zip(emojis, r[0])) if r else {e: 0 for e in emojis}
     d['emoji'] = sorted(counts.items(), key=lambda x:-x[1])[:5]
 
     # Total words sent (excluding reactions, empty messages, and attachments-only)
