@@ -241,12 +241,11 @@ def analyze(ts_start, ts_jun):
     """)
     d['resp'] = int(r[0][0] or 30)
 
-    # Emoji usage
+    # Emoji usage (batch query)
     emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
-    counts = {}
-    for e in emojis:
-        r = q(f"SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZTEXT LIKE '%{e}%' AND ZMESSAGEDATE>{ts_start} AND ZISFROMME=1")
-        counts[e] = r[0][0]
+    emoji_cases = ', '.join([f"SUM(CASE WHEN ZTEXT LIKE '%{e}%' THEN 1 ELSE 0 END)" for e in emojis])
+    r = q(f"SELECT {emoji_cases} FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} AND ZISFROMME=1")
+    counts = dict(zip(emojis, r[0])) if r else {e: 0 for e in emojis}
     d['emoji'] = sorted(counts.items(), key=lambda x:-x[1])[:5]
 
     # Total words sent

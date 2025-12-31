@@ -334,13 +334,11 @@ def analyze_imessage(ts_start, ts_jun):
     """)
     d['resp'] = int(r[0][0] or 30)
 
-    # Emojis
+    # Emojis (batch query)
     emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
-    counts = {}
-    for e in emojis:
-        r = q_imessage(f"SELECT COUNT(*) FROM message WHERE text LIKE '%{e}%' AND (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
-        counts[e] = r[0][0]
-    d['emoji'] = counts
+    emoji_cases = ', '.join([f"SUM(CASE WHEN text LIKE '%{e}%' THEN 1 ELSE 0 END)" for e in emojis])
+    r = q_imessage(f"SELECT {emoji_cases} FROM message WHERE (date/1000000000+978307200)>{ts_start} AND is_from_me=1")
+    d['emoji'] = dict(zip(emojis, r[0])) if r else {e: 0 for e in emojis}
 
     # Words
     r = q_imessage(f"""
@@ -536,13 +534,11 @@ def analyze_whatsapp(ts_start, ts_jun):
     """)
     d['resp'] = int(r[0][0] or 30)
 
-    # Emojis
+    # Emojis (batch query)
     emojis = ['😂','❤️','😭','🔥','💀','✨','🙏','👀','💯','😈']
-    counts = {}
-    for e in emojis:
-        r = q_whatsapp(f"SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZTEXT LIKE '%{e}%' AND ZMESSAGEDATE>{ts_start} AND ZISFROMME=1")
-        counts[e] = r[0][0]
-    d['emoji'] = counts
+    emoji_cases = ', '.join([f"SUM(CASE WHEN ZTEXT LIKE '%{e}%' THEN 1 ELSE 0 END)" for e in emojis])
+    r = q_whatsapp(f"SELECT {emoji_cases} FROM ZWAMESSAGE WHERE ZMESSAGEDATE>{ts_start} AND ZISFROMME=1")
+    d['emoji'] = dict(zip(emojis, r[0])) if r else {e: 0 for e in emojis}
 
     # Words
     r = q_whatsapp(f"""
