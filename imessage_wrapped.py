@@ -2083,6 +2083,485 @@ goTo(0);
     with open(path, 'w') as f: f.write(html)
     return path
 
+
+def collect_debug_data(contacts, ts_start, ts_end):
+    """Collect comprehensive per-contact statistics for debugging."""
+    import json
+    debug_contacts = {}
+
+    one_on_one_cte = """
+        WITH chat_participants AS (
+            SELECT chat_id, COUNT(*) as participant_count
+            FROM chat_handle_join
+            GROUP BY chat_id
+        ),
+        one_on_one_messages AS (
+            SELECT m.ROWID as msg_id
+            FROM message m
+            JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+            JOIN chat_participants cp ON cmj.chat_id = cp.chat_id
+            WHERE cp.participant_count = 1
+        )
+    """
+
+    # Get all contacts with message counts
+    rows = q(f"""{one_on_one_cte}
+        SELECT
+            h.id,
+            COUNT(*) as total,
+            SUM(CASE WHEN m.is_from_me=1 THEN 1 ELSE 0 END) as sent,
+            SUM(CASE WHEN m.is_from_me=0 THEN 1 ELSE 0 END) as received,
+            MIN(datetime((m.date/1000000000+978307200),'unixepoch','localtime')) as first_msg,
+            MAX(datetime((m.date/1000000000+978307200),'unixepoch','localtime')) as last_msg,
+            COUNT(DISTINCT DATE(datetime((m.date/1000000000+978307200),'unixepoch','localtime'))) as active_days
+        FROM message m
+        JOIN handle h ON m.handle_id = h.ROWID
+        WHERE (m.date/1000000000+978307200)>{ts_start} AND (m.date/1000000000+978307200)<{ts_end}
+        AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        AND NOT (LENGTH(REPLACE(REPLACE(h.id, '+', ''), '-', '')) BETWEEN 5 AND 6 AND REPLACE(REPLACE(h.id, '+', ''), '-', '') GLOB '[0-9]*')
+        AND h.id NOT LIKE 'urn:%'
+        GROUP BY h.id
+        ORDER BY total DESC
+    """)
+
+    for handle, total, sent, received, first_msg, last_msg, active_days in rows:
+        name = get_name(handle, contacts)
+        key = name.lower().strip()
+        if key not in debug_contacts:
+            debug_contacts[key] = {
+                'name': name,
+                'handle': handle,
+                'total': 0,
+                'sent': 0,
+                'received': 0,
+                'first_msg': None,
+                'last_msg': None,
+                'active_days': 0,
+                'platforms': ['iMessage'],
+                'your_avg_response_min': None,
+                'their_avg_response_min': None,
+            }
+        debug_contacts[key]['total'] += total or 0
+        debug_contacts[key]['sent'] += sent or 0
+        debug_contacts[key]['received'] += received or 0
+        debug_contacts[key]['active_days'] += active_days or 0
+        if first_msg and (not debug_contacts[key]['first_msg'] or first_msg < debug_contacts[key]['first_msg']):
+            debug_contacts[key]['first_msg'] = first_msg
+        if last_msg and (not debug_contacts[key]['last_msg'] or last_msg > debug_contacts[key]['last_msg']):
+            debug_contacts[key]['last_msg'] = last_msg
+
+    # Get per-contact response times (your response time)
+    resp_rows = q(f"""
+        WITH chat_participants AS (
+            SELECT chat_id, COUNT(*) as participant_count
+            FROM chat_handle_join GROUP BY chat_id
+        ),
+        one_on_one_messages AS (
+            SELECT m.ROWID as msg_id
+            FROM message m
+            JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+            JOIN chat_participants cp ON cmj.chat_id = cp.chat_id
+            WHERE cp.participant_count = 1
+        ),
+        response_pairs AS (
+            SELECT m.handle_id,
+                   (m.date/1000000000+978307200) ts,
+                   m.is_from_me,
+                   LAG(m.date/1000000000+978307200) OVER (PARTITION BY m.handle_id ORDER BY m.date) pt,
+                   LAG(m.is_from_me) OVER (PARTITION BY m.handle_id ORDER BY m.date) pf
+            FROM message m
+            WHERE (m.date/1000000000+978307200) > {ts_start} AND (m.date/1000000000+978307200) < {ts_end}
+            AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        )
+        SELECT h.id, AVG(rp.ts - rp.pt)/60.0 as avg_resp_min
+        FROM response_pairs rp
+        JOIN handle h ON rp.handle_id = h.ROWID
+        WHERE rp.is_from_me = 1 AND rp.pf = 0
+        AND (rp.ts - rp.pt) BETWEEN 10 AND 86400
+        GROUP BY h.id
+    """)
+    for handle, avg_resp in resp_rows:
+        name = get_name(handle, contacts)
+        key = name.lower().strip()
+        if key in debug_contacts and avg_resp:
+            debug_contacts[key]['your_avg_response_min'] = round(avg_resp, 1)
+
+    # Get their response time
+    their_resp_rows = q(f"""
+        WITH chat_participants AS (
+            SELECT chat_id, COUNT(*) as participant_count
+            FROM chat_handle_join GROUP BY chat_id
+        ),
+        one_on_one_messages AS (
+            SELECT m.ROWID as msg_id
+            FROM message m
+            JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+            JOIN chat_participants cp ON cmj.chat_id = cp.chat_id
+            WHERE cp.participant_count = 1
+        ),
+        response_pairs AS (
+            SELECT m.handle_id,
+                   (m.date/1000000000+978307200) ts,
+                   m.is_from_me,
+                   LAG(m.date/1000000000+978307200) OVER (PARTITION BY m.handle_id ORDER BY m.date) pt,
+                   LAG(m.is_from_me) OVER (PARTITION BY m.handle_id ORDER BY m.date) pf
+            FROM message m
+            WHERE (m.date/1000000000+978307200) > {ts_start} AND (m.date/1000000000+978307200) < {ts_end}
+            AND m.ROWID IN (SELECT msg_id FROM one_on_one_messages)
+        )
+        SELECT h.id, AVG(rp.ts - rp.pt)/60.0 as avg_resp_min
+        FROM response_pairs rp
+        JOIN handle h ON rp.handle_id = h.ROWID
+        WHERE rp.is_from_me = 0 AND rp.pf = 1
+        AND (rp.ts - rp.pt) BETWEEN 10 AND 86400
+        GROUP BY h.id
+    """)
+    for handle, avg_resp in their_resp_rows:
+        name = get_name(handle, contacts)
+        key = name.lower().strip()
+        if key in debug_contacts and avg_resp:
+            debug_contacts[key]['their_avg_response_min'] = round(avg_resp, 1)
+
+    return sorted(debug_contacts.values(), key=lambda x: -x['total'])
+
+
+def gen_debug_html(debug_data, path, year):
+    """Generate a debug HTML page with sortable contact statistics table."""
+    import json
+
+    total_contacts = len(debug_data)
+    total_messages = sum(c['total'] for c in debug_data)
+
+    html = f'''<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iMessage Wrapped {year} - Debug View</title>
+<style>
+:root {{
+    --bg: #0a0a0a;
+    --card-bg: #141414;
+    --text: #ffffff;
+    --text-muted: #888888;
+    --border: #333333;
+    --green: #4ade80;
+    --cyan: #22d3ee;
+    --pink: #f472b6;
+    --orange: #fb923c;
+    --purple: #a78bfa;
+}}
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+}}
+.container {{
+    max-width: 1400px;
+    margin: 0 auto;
+}}
+header {{
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: var(--card-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}}
+header h1 {{
+    font-size: 2rem;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, var(--green), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}}
+.stats-row {{
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}}
+.stat-box {{
+    background: var(--bg);
+    padding: 15px 25px;
+    border-radius: 8px;
+    text-align: center;
+}}
+.stat-box .value {{
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--green);
+}}
+.stat-box .label {{
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 5px;
+}}
+.controls {{
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+}}
+.search-box {{
+    flex: 1;
+    min-width: 200px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 1rem;
+}}
+.search-box:focus {{
+    outline: none;
+    border-color: var(--green);
+}}
+.table-container {{
+    overflow-x: auto;
+    background: var(--card-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}}
+table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}}
+th, td {{
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}}
+th {{
+    background: var(--bg);
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+}}
+th:hover {{
+    color: var(--green);
+}}
+th.sorted-asc::after {{ content: " \\2191"; color: var(--green); }}
+th.sorted-desc::after {{ content: " \\2193"; color: var(--green); }}
+tr:hover {{
+    background: rgba(74, 222, 128, 0.05);
+}}
+.rank {{
+    color: var(--text-muted);
+    font-weight: 600;
+    width: 50px;
+}}
+.name {{
+    font-weight: 600;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.number {{
+    font-family: "SF Mono", Monaco, monospace;
+    text-align: right;
+}}
+.ratio {{
+    font-weight: 600;
+}}
+.ratio.high {{ color: var(--pink); }}
+.ratio.low {{ color: var(--cyan); }}
+.ratio.balanced {{ color: var(--text-muted); }}
+.response-time {{
+    font-size: 0.85rem;
+}}
+.response-time.fast {{ color: var(--green); }}
+.response-time.medium {{ color: var(--orange); }}
+.response-time.slow {{ color: var(--pink); }}
+.date {{
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}}
+.no-results {{
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}}
+@media (max-width: 768px) {{
+    body {{ padding: 10px; }}
+    th, td {{ padding: 8px 10px; font-size: 0.8rem; }}
+    .stat-box {{ padding: 10px 15px; }}
+    .stat-box .value {{ font-size: 1.2rem; }}
+}}
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>iMessage Wrapped {year} - Debug View</h1>
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="value">{total_contacts:,}</div>
+                <div class="label">Total Contacts</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">{total_messages:,}</div>
+                <div class="label">Total Messages</div>
+            </div>
+        </div>
+    </header>
+
+    <div class="controls">
+        <input type="text" class="search-box" id="search" placeholder="Search contacts...">
+    </div>
+
+    <div class="table-container">
+        <table id="contacts-table">
+            <thead>
+                <tr>
+                    <th data-sort="rank">#</th>
+                    <th data-sort="name">Name</th>
+                    <th data-sort="total">Total</th>
+                    <th data-sort="sent">Sent</th>
+                    <th data-sort="received">Received</th>
+                    <th data-sort="ratio">Ratio</th>
+                    <th data-sort="your_resp">Your Resp</th>
+                    <th data-sort="their_resp">Their Resp</th>
+                    <th data-sort="active_days">Active Days</th>
+                    <th data-sort="first_msg">First Msg</th>
+                    <th data-sort="last_msg">Last Msg</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            </tbody>
+        </table>
+        <div class="no-results" id="no-results" style="display:none;">No contacts match your search.</div>
+    </div>
+</div>
+
+<script>
+const contactsData = {json.dumps(debug_data)};
+
+let currentSort = {{ column: 'total', direction: 'desc' }};
+let searchTerm = '';
+
+function formatResponseTime(mins) {{
+    if (mins === null || mins === undefined) return '<span class="response-time">-</span>';
+    let cls = 'medium';
+    if (mins < 10) cls = 'fast';
+    else if (mins > 60) cls = 'slow';
+
+    if (mins < 60) return `<span class="response-time ${{cls}}">${{Math.round(mins)}}m</span>`;
+    const hours = Math.floor(mins / 60);
+    const remaining = Math.round(mins % 60);
+    return `<span class="response-time ${{cls}}">${{hours}}h ${{remaining}}m</span>`;
+}}
+
+function formatRatio(sent, received) {{
+    if (received === 0) return '<span class="ratio high">&#8734;</span>';
+    const ratio = sent / received;
+    let cls = 'balanced';
+    if (ratio > 1.5) cls = 'high';
+    else if (ratio < 0.67) cls = 'low';
+    return `<span class="ratio ${{cls}}">${{ratio.toFixed(2)}}</span>`;
+}}
+
+function formatDate(dateStr) {{
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
+}}
+
+function renderTable() {{
+    const tbody = document.getElementById('table-body');
+    const noResults = document.getElementById('no-results');
+
+    let filtered = contactsData.filter(c => {{
+        if (searchTerm && !c.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+        return true;
+    }});
+
+    filtered.sort((a, b) => {{
+        let aVal, bVal;
+        switch(currentSort.column) {{
+            case 'name': aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase(); break;
+            case 'total': aVal = a.total; bVal = b.total; break;
+            case 'sent': aVal = a.sent; bVal = b.sent; break;
+            case 'received': aVal = a.received; bVal = b.received; break;
+            case 'ratio': aVal = a.received ? a.sent/a.received : 999; bVal = b.received ? b.sent/b.received : 999; break;
+            case 'your_resp': aVal = a.your_avg_response_min || 9999; bVal = b.your_avg_response_min || 9999; break;
+            case 'their_resp': aVal = a.their_avg_response_min || 9999; bVal = b.their_avg_response_min || 9999; break;
+            case 'active_days': aVal = a.active_days; bVal = b.active_days; break;
+            case 'first_msg': aVal = a.first_msg || ''; bVal = b.first_msg || ''; break;
+            case 'last_msg': aVal = a.last_msg || ''; bVal = b.last_msg || ''; break;
+            default: aVal = a.total; bVal = b.total;
+        }}
+        if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+        return 0;
+    }});
+
+    if (filtered.length === 0) {{
+        tbody.innerHTML = '';
+        noResults.style.display = 'block';
+        return;
+    }}
+
+    noResults.style.display = 'none';
+    tbody.innerHTML = filtered.map((c, i) => `
+        <tr>
+            <td class="rank">${{i + 1}}</td>
+            <td class="name" title="${{c.name}}">${{c.name}}</td>
+            <td class="number">${{c.total.toLocaleString()}}</td>
+            <td class="number">${{c.sent.toLocaleString()}}</td>
+            <td class="number">${{c.received.toLocaleString()}}</td>
+            <td class="number">${{formatRatio(c.sent, c.received)}}</td>
+            <td>${{formatResponseTime(c.your_avg_response_min)}}</td>
+            <td>${{formatResponseTime(c.their_avg_response_min)}}</td>
+            <td class="number">${{c.active_days}}</td>
+            <td class="date">${{formatDate(c.first_msg)}}</td>
+            <td class="date">${{formatDate(c.last_msg)}}</td>
+        </tr>
+    `).join('');
+}}
+
+document.querySelectorAll('th[data-sort]').forEach(th => {{
+    th.addEventListener('click', () => {{
+        const col = th.dataset.sort;
+        if (currentSort.column === col) {{
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        }} else {{
+            currentSort.column = col;
+            currentSort.direction = col === 'name' ? 'asc' : 'desc';
+        }}
+        document.querySelectorAll('th').forEach(t => t.classList.remove('sorted-asc', 'sorted-desc'));
+        th.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        renderTable();
+    }});
+}});
+
+document.getElementById('search').addEventListener('input', (e) => {{
+    searchTerm = e.target.value;
+    renderTable();
+}});
+
+document.querySelector('th[data-sort="total"]').classList.add('sorted-desc');
+renderTable();
+</script>
+</body>
+</html>'''
+
+    with open(path, 'w') as f:
+        f.write(html)
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', '-o', default=None)
@@ -2125,9 +2604,20 @@ def main():
     spinner.start("Building your wrapped...")
     gen_html(data, contacts, output_file)
     spinner.stop(f"Saved to {output_file}")
-    
+
+    # Generate debug page
+    debug_file = output_file.replace('.html', '_debug.html')
+    print(f"[*] Generating debug page...")
+    spinner.start("Collecting per-contact statistics...")
+    debug_data = collect_debug_data(contacts, ts_start, ts_end)
+    spinner.stop(f"{len(debug_data)} contacts analyzed")
+    spinner.start("Building debug view...")
+    gen_debug_html(debug_data, debug_file, year)
+    spinner.stop(f"Saved to {debug_file}")
+
     subprocess.run(['open', output_file])
-    print("\n  Done! Click through your wrapped.\n")
+    print(f"\n  Done! Click through your wrapped.")
+    print(f"  Debug page: {debug_file}\n")
 
 if __name__ == '__main__':
     main()
