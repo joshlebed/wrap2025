@@ -1,0 +1,99 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #4ade80;
+}
+
+#chart {
+    background: #16213e;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.line {
+    fill: none;
+    stroke-width: 2;
+}
+
+.axis text {
+    fill: #aaa;
+    font-size: 11px;
+}
+
+.axis path,
+.axis line {
+    stroke: #444;
+}
+
+.grid line {
+    stroke: #333;
+    stroke-opacity: 0.7;
+}
+
+.grid path {
+    stroke-width: 0;
+}
+
+#legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: opacity 0.2s;
+}
+
+.legend-item:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.legend-item.hidden {
+    opacity: 0.3;
+}
+
+.legend-color {
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+}
+
+.tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.instructions {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+}
