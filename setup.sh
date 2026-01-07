@@ -3,7 +3,7 @@
 # iMessage Dashboard Setup Script
 # One-command setup for non-technical macOS users
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/setup.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/joshlebed/wrap2025/main/setup.sh | bash
 #
 
 set -e
@@ -76,7 +76,7 @@ else
         open "/System/Library/PreferencePanes/Security.prefPane" 2>/dev/null || true
     echo ""
     echo "After enabling Full Disk Access, restart Terminal and run:"
-    echo -e "${BOLD}curl -fsSL https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/setup.sh | bash${NC}"
+    echo -e "${BOLD}curl -fsSL https://raw.githubusercontent.com/joshlebed/wrap2025/main/setup.sh | bash${NC}"
     exit 1
 fi
 echo ""
@@ -89,7 +89,7 @@ INSTALL_DIR="$HOME/imessage-dashboard"
 mkdir -p "$INSTALL_DIR/chart"
 cd "$INSTALL_DIR"
 
-BASE_URL="https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main"
+BASE_URL="https://raw.githubusercontent.com/joshlebed/wrap2025/main"
 
 # Download Python scripts
 echo "  Downloading data scripts..."
