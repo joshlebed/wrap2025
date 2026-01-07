@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Script to query iMessage stats with monthly DM totals by contact.
+Outputs: message_stats_monthly.csv
 Usage: python3 query_messages_monthly.py
 """
 
