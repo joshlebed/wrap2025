@@ -10,8 +10,6 @@ Your texting habits, visualized. Interactive charts and Spotify Wrapped-style re
 
 Beautiful D3.js visualizations of your messaging patterns over time.
 
-![Dashboard Preview](https://wrap2025.com/dashboard-preview.png)
-
 ### One-Command Setup
 
 Open **Terminal** (find it in Applications → Utilities) and paste this:
