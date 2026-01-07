@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/joshlebed/wrap2025/main/setup.sh | 
 
 That's it! The script will:
 
-1. **Check for Python** - installs via Xcode Command Line Tools if needed
+1. **Check for Python** - installs from python.org if needed
 2. **Check permissions** - guides you through enabling Full Disk Access
 3. **Download everything** - all dashboard files to `~/imessage-dashboard`
 4. **Analyze your messages** - extracts stats from your iMessage database
@@ -71,11 +71,10 @@ You need Full Disk Access enabled for Terminal:
 
 The setup script should handle this automatically. If it doesn't:
 
-1. Open Terminal
-2. Run: `xcode-select --install`
-3. Click "Install" in the popup
-4. Wait for installation to complete
-5. Run the setup script again
+1. Go to https://www.python.org/downloads/
+2. Download the macOS installer
+3. Run the installer
+4. Run the setup script again
 
 ### Charts show no data
 

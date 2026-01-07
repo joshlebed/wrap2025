@@ -25,32 +25,48 @@ echo ""
 # Step 1: Check for Python 3
 echo -e "${BOLD}Step 1/4: Checking for Python 3...${NC}"
 
+# Check common Python locations
+PYTHON_CMD=""
 if command -v python3 &> /dev/null; then
-    PYTHON_VERSION=$(python3 --version 2>&1)
+    PYTHON_CMD="python3"
+elif [ -x "/usr/local/bin/python3" ]; then
+    PYTHON_CMD="/usr/local/bin/python3"
+elif [ -x "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+    PYTHON_CMD="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+fi
+
+if [ -n "$PYTHON_CMD" ]; then
+    PYTHON_VERSION=$($PYTHON_CMD --version 2>&1)
     echo -e "${GREEN}✓ Found: $PYTHON_VERSION${NC}"
 else
-    echo -e "${YELLOW}Python 3 not found. Installing via Xcode Command Line Tools...${NC}"
-    echo ""
-    echo "A popup may appear asking to install developer tools."
-    echo "Click 'Install' and wait for it to complete (this may take a few minutes)."
+    echo -e "${YELLOW}Python 3 not found. Installing from python.org...${NC}"
     echo ""
 
-    # This triggers the Xcode CLT installation popup
-    xcode-select --install 2>/dev/null || true
+    # Download Python installer
+    PYTHON_PKG="/tmp/python-installer.pkg"
+    PYTHON_URL="https://www.python.org/ftp/python/3.12.4/python-3.12.4-macos11.pkg"
 
-    echo -e "${YELLOW}Waiting for Xcode Command Line Tools installation...${NC}"
-    echo "Press Enter after the installation completes."
-    read -r
+    echo "  Downloading Python 3.12..."
+    curl -fsSL "$PYTHON_URL" -o "$PYTHON_PKG"
 
-    # Verify Python is now available
-    if ! command -v python3 &> /dev/null; then
-        echo -e "${RED}✗ Python 3 still not found after installation.${NC}"
-        echo "Please manually install Python from https://www.python.org/downloads/"
+    echo "  Installing Python (you may need to enter your password)..."
+    sudo installer -pkg "$PYTHON_PKG" -target /
+
+    rm -f "$PYTHON_PKG"
+
+    # Update PATH for this session
+    export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
+    PYTHON_CMD="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+
+    # Verify installation
+    if [ -x "$PYTHON_CMD" ]; then
+        PYTHON_VERSION=$($PYTHON_CMD --version 2>&1)
+        echo -e "${GREEN}✓ Installed: $PYTHON_VERSION${NC}"
+    else
+        echo -e "${RED}✗ Python installation failed.${NC}"
+        echo "Please install manually from https://www.python.org/downloads/"
         exit 1
     fi
-
-    PYTHON_VERSION=$(python3 --version 2>&1)
-    echo -e "${GREEN}✓ Installed: $PYTHON_VERSION${NC}"
 fi
 echo ""
 
@@ -125,9 +141,9 @@ echo -e "${BOLD}Step 4/4: Analyzing your messages...${NC}"
 echo "(This may take 30-60 seconds)"
 echo ""
 
-python3 query_messages_monthly.py
+$PYTHON_CMD query_messages_monthly.py
 echo ""
-python3 query_messages_detailed.py
+$PYTHON_CMD query_messages_detailed.py
 echo ""
 
 echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════╗${NC}"
@@ -139,4 +155,4 @@ echo ""
 echo -e "${BOLD}Starting the dashboard...${NC}"
 echo ""
 
-python3 chart/serve.py
+$PYTHON_CMD chart/serve.py
