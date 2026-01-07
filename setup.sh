@@ -25,14 +25,24 @@ echo ""
 # Step 1: Check for Python 3
 echo -e "${BOLD}Step 1/4: Checking for Python 3...${NC}"
 
-# Check common Python locations
+# Check for real Python installations (avoid /usr/bin/python3 shim that triggers CLT installer)
 PYTHON_CMD=""
-if command -v python3 &> /dev/null; then
-    PYTHON_CMD="python3"
+
+# Check Homebrew locations first
+if [ -x "/opt/homebrew/bin/python3" ]; then
+    PYTHON_CMD="/opt/homebrew/bin/python3"
 elif [ -x "/usr/local/bin/python3" ]; then
     PYTHON_CMD="/usr/local/bin/python3"
+# Check python.org installation
 elif [ -x "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
     PYTHON_CMD="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+elif [ -x "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3" ]; then
+    PYTHON_CMD="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3"
+elif [ -x "/Library/Frameworks/Python.framework/Versions/3.10/bin/python3" ]; then
+    PYTHON_CMD="/Library/Frameworks/Python.framework/Versions/3.10/bin/python3"
+# Check if Xcode CLT python exists and works (not just the shim)
+elif [ -x "/Library/Developer/CommandLineTools/usr/bin/python3" ]; then
+    PYTHON_CMD="/Library/Developer/CommandLineTools/usr/bin/python3"
 fi
 
 if [ -n "$PYTHON_CMD" ]; then
