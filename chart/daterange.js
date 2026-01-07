@@ -1,10 +1,32 @@
 // Shared date range utilities for all charts
 
-// Generate month options from Jan 2019 to Feb 2026
+// Generate month options from data columns
+function generateMonthOptionsFromData(columns) {
+    // Filter to only month columns (YYYY-MM format)
+    const monthCols = columns.filter(c => /^\d{4}-\d{2}$/.test(c));
+    return monthCols.map(m => ({
+        value: m,
+        label: new Date(m + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    }));
+}
+
+// Generate quarter options from data columns
+function generateQuarterOptionsFromData(columns) {
+    // Filter to only quarter columns (YYYY-Q# format)
+    const quarterCols = columns.filter(c => /^\d{4}-Q\d$/.test(c));
+    return quarterCols.map(q => ({
+        value: q,
+        label: q.replace('-', ' ')
+    }));
+}
+
+// Legacy functions for backward compatibility (now dynamic based on current year)
 function generateMonthOptions() {
     const months = [];
-    for (let year = 2019; year <= 2026; year++) {
-        const maxMonth = year === 2026 ? 2 : 12;
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    for (let year = 2008; year <= currentYear; year++) {
+        const maxMonth = year === currentYear ? currentMonth : 12;
         for (let month = 1; month <= maxMonth; month++) {
             const value = `${year}-${String(month).padStart(2, '0')}`;
             const label = new Date(year, month - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -14,11 +36,12 @@ function generateMonthOptions() {
     return months;
 }
 
-// Generate quarter options from Q1 2019 to Q1 2026
 function generateQuarterOptions() {
     const quarters = [];
-    for (let year = 2019; year <= 2026; year++) {
-        const maxQ = year === 2026 ? 1 : 4;
+    const currentYear = new Date().getFullYear();
+    const currentQ = Math.ceil((new Date().getMonth() + 1) / 3);
+    for (let year = 2008; year <= currentYear; year++) {
+        const maxQ = year === currentYear ? currentQ : 4;
         for (let q = 1; q <= maxQ; q++) {
             const value = `${year}-Q${q}`;
             quarters.push({ value, label: `Q${q} ${year}` });

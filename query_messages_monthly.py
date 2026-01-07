@@ -110,17 +110,45 @@ def get_month_timestamps(year, month):
     return start_ns, end_ns
 
 
+def get_date_range(conn):
+    """Get the date range of messages in the database."""
+    APPLE_EPOCH_OFFSET = 978307200
+
+    result = conn.execute("SELECT MIN(date), MAX(date) FROM message WHERE date > 0").fetchone()
+    if not result or not result[0]:
+        # Default fallback
+        return datetime(2019, 1, 1), datetime.now()
+
+    min_ns, max_ns = result
+    min_date = datetime.fromtimestamp((min_ns / 1_000_000_000) + APPLE_EPOCH_OFFSET)
+    max_date = datetime.fromtimestamp((max_ns / 1_000_000_000) + APPLE_EPOCH_OFFSET)
+
+    return min_date, max_date
+
+
 def main():
     print("Loading contacts...")
     contacts = load_contacts()
     print(f"  {len(contacts)} contact mappings loaded\n")
 
-    # Generate month columns from Jan 2019 to Feb 2026
-    months = generate_months(2019, 1, 2026, 2)
-    month_labels = [f"{y}-{m:02d}" for y, m in months]
-
     print("Querying iMessage database...")
     conn = sqlite3.connect(IMESSAGE_DB)
+
+    # Get date range from user's actual messages
+    min_date, max_date = get_date_range(conn)
+    start_year, start_month = min_date.year, min_date.month
+    # End at next month to include current month's data
+    end_year = max_date.year
+    end_month = max_date.month + 1
+    if end_month > 12:
+        end_month = 1
+        end_year += 1
+
+    print(f"  Message date range: {min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}\n")
+
+    # Generate month columns based on actual data range
+    months = generate_months(start_year, start_month, end_year, end_month)
+    month_labels = [f"{y}-{m:02d}" for y, m in months]
 
     # Build dynamic SQL for monthly counts
     month_cases = []
@@ -193,15 +221,17 @@ def main():
     print(f"Results written to {csv_path}")
     print(f"  {len(results)} contacts, {len(month_labels)} month columns")
 
-    # Generate quarterly data
+    # Generate quarterly data based on actual date range
     quarters = []
     quarter_labels = []
-    for y in range(2019, 2027):
+    end_quarter = (end_month - 1) // 3 + 1
+    for y in range(start_year, end_year + 1):
         for q in range(1, 5):
             quarters.append((y, q))
             quarter_labels.append(f"{y}-Q{q}")
-    # Filter to valid range (Q1 2019 to Q1 2026)
-    quarters = [(y, q) for y, q in quarters if (y, q) <= (2026, 1)]
+    # Filter to valid range
+    start_quarter = (start_month - 1) // 3 + 1
+    quarters = [(y, q) for y, q in quarters if (y, q) >= (start_year, start_quarter) and (y, q) <= (end_year, end_quarter)]
     quarter_labels = [f"{y}-Q{q}" for y, q in quarters]
 
     # Map months to quarters

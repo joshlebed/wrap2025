@@ -41,8 +41,9 @@ Promise.all([
         startDateSelect.add(new Option(label, m));
         endDateSelect.add(new Option(label, m));
     });
-    startDateSelect.value = "2019-08";
-    endDateSelect.value = "2025-12";
+    // Default to full data range
+    startDateSelect.value = allMonths[0];
+    endDateSelect.value = allMonths[allMonths.length - 1];
 
     render();
 

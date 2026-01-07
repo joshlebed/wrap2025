@@ -15,7 +15,7 @@ Beautiful D3.js visualizations of your messaging patterns over time.
 Open **Terminal** (find it in Applications → Utilities) and paste this:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joshlebed/wrap2025/main/setup.sh | bash
+curl -H "Cache-Control: no-cache" -fsSL https://raw.githubusercontent.com/joshlebed/wrap2025/main/setup.sh | bash
 ```
 
 That's it! The script will:

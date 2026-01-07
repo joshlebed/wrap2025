@@ -43,6 +43,27 @@ d3.json(jsonPath).then(data => {
         contactSelect.appendChild(option);
     });
 
+    // Extract available years from all contacts' by_year data
+    const allYears = new Set();
+    Object.values(data).forEach(contactData => {
+        Object.keys(contactData.by_year || {}).forEach(year => {
+            allYears.add(parseInt(year));
+        });
+    });
+    const years = Array.from(allYears).sort((a, b) => a - b);
+
+    // Populate year dropdowns
+    years.forEach(year => {
+        startYearSelect.add(new Option(year, year));
+        endYearSelect.add(new Option(year, year));
+    });
+
+    // Default to full range
+    if (years.length > 0) {
+        startYearSelect.value = years[0];
+        endYearSelect.value = years[years.length - 1];
+    }
+
     render();
 
     contactSelect.addEventListener("change", render);

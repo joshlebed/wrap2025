@@ -96,6 +96,20 @@ def ns_to_datetime(ns_timestamp):
         return None
 
 
+def get_date_range(conn):
+    """Get the date range of messages in the database."""
+    result = conn.execute("SELECT MIN(date), MAX(date) FROM message WHERE date > 0").fetchone()
+    if not result or not result[0]:
+        # Default fallback
+        return datetime(2019, 1, 1), datetime.now()
+
+    min_ns, max_ns = result
+    min_date = datetime.fromtimestamp((min_ns / 1_000_000_000) + APPLE_EPOCH_OFFSET)
+    max_date = datetime.fromtimestamp((max_ns / 1_000_000_000) + APPLE_EPOCH_OFFSET)
+
+    return min_date, max_date
+
+
 def main():
     print("Loading contacts...")
     contacts = load_contacts()
@@ -104,9 +118,19 @@ def main():
     print("Querying iMessage database for detailed stats...")
     conn = sqlite3.connect(IMESSAGE_DB)
 
-    # Get start timestamp for Jan 2019
-    start_date = datetime(2019, 1, 1)
-    start_ns = (int(start_date.timestamp()) - APPLE_EPOCH_OFFSET) * 1_000_000_000
+    # Get date range from user's actual messages
+    min_date, max_date = get_date_range(conn)
+    start_year, start_month = min_date.year, min_date.month
+    end_year = max_date.year
+    end_month = max_date.month + 1
+    if end_month > 12:
+        end_month = 1
+        end_year += 1
+
+    print(f"  Message date range: {min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}\n")
+
+    # Get start timestamp based on actual first message
+    start_ns = (int(min_date.timestamp()) - APPLE_EPOCH_OFFSET) * 1_000_000_000
 
     # ============================================
     # 1. Sent vs Received by month per contact
@@ -267,11 +291,11 @@ def main():
     # Write CSV files
     # ============================================
 
-    # Get all months from Jan 2019 to Feb 2026
+    # Get all months based on actual data range
     months = []
-    for year in range(2019, 2027):
+    for year in range(start_year, end_year + 1):
         for month in range(1, 13):
-            if (year, month) <= (2026, 2):
+            if (year, month) >= (start_year, start_month) and (year, month) <= (end_year, end_month):
                 months.append(f"{year}-{month:02d}")
 
     # Get top contacts by total messages
