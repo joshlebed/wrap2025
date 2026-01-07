@@ -15,7 +15,7 @@ Beautiful D3.js visualizations of your messaging patterns over time.
 Open **Terminal** (find it in Applications → Utilities) and paste this:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/joshlebed/wrap2025/main/setup.sh | bash
 ```
 
 That's it! The script will:
@@ -90,21 +90,21 @@ In addition to the interactive dashboard, generate Spotify Wrapped-style reports
 ### iMessage Wrapped
 
 ```bash
-curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/imessage_wrapped.py
+curl -O https://raw.githubusercontent.com/joshlebed/wrap2025/main/imessage_wrapped.py
 python3 imessage_wrapped.py
 ```
 
 ### WhatsApp Wrapped
 
 ```bash
-curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/whatsapp_wrapped.py
+curl -O https://raw.githubusercontent.com/joshlebed/wrap2025/main/whatsapp_wrapped.py
 python3 whatsapp_wrapped.py
 ```
 
 ### Combined (iMessage + WhatsApp)
 
 ```bash
-curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/combined_wrapped.py
+curl -O https://raw.githubusercontent.com/joshlebed/wrap2025/main/combined_wrapped.py
 python3 combined_wrapped.py
 ```
 
