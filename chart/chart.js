@@ -1,4 +1,4 @@
-// Load CSV from parent directory
+// Line chart with date range filtering
 const csvPath = "../message_stats_monthly.csv?" + Date.now();
 
 const margin = { top: 20, right: 30, bottom: 50, left: 60 };
@@ -15,20 +15,73 @@ const svg = d3.select("#chart")
     .attr("transform", `translate(${margin.left},${margin.top})`);
 
 const tooltip = d3.select("#tooltip");
+const startDateSelect = document.getElementById("start-date");
+const endDateSelect = document.getElementById("end-date");
+const topNSelect = document.getElementById("top-n");
+
+let rawData, allMonths, colorMap = new Map();
+const hiddenContacts = new Set();
 
 d3.csv(csvPath).then(data => {
-    const months = Object.keys(data[0]).filter(k => k !== "name" && k !== "total_dm");
+    rawData = data;
+    allMonths = Object.keys(data[0]).filter(k => k !== "name" && k !== "total_dm");
+
+    // Populate date selects
+    allMonths.forEach(m => {
+        const label = new Date(m + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        startDateSelect.add(new Option(label, m));
+        endDateSelect.add(new Option(label, m));
+    });
+    startDateSelect.value = "2019-08";
+    endDateSelect.value = "2025-12";
+
+    // Assign colors to all contacts
+    data.forEach((d, i) => {
+        colorMap.set(d.name, colors[i % colors.length]);
+    });
+
+    render();
+
+    startDateSelect.addEventListener("change", () => { hiddenContacts.clear(); render(); });
+    endDateSelect.addEventListener("change", () => { hiddenContacts.clear(); render(); });
+    topNSelect.addEventListener("change", () => { hiddenContacts.clear(); render(); });
+}).catch(err => {
+    console.error("Failed to load CSV:", err);
+    document.getElementById("chart").innerHTML =
+        `<p style="color: #f87171; text-align: center; padding: 40px;">
+            Failed to load data. Run <code>python3 query_messages_monthly.py</code> first.
+        </p>`;
+});
+
+function render() {
+    svg.selectAll("*").remove();
+    d3.select("#legend").selectAll("*").remove();
+
+    const startDate = startDateSelect.value;
+    const endDate = endDateSelect.value;
+    const topN = parseInt(topNSelect.value);
+
+    // Filter months within range
+    const months = allMonths.filter(m => m >= startDate && m <= endDate);
+    if (months.length === 0) return;
+
     const parseMonth = d3.timeParse("%Y-%m");
 
-    const contacts = data.map(d => d.name);
-    const hiddenContacts = new Set();
+    // Calculate totals within range and get top N
+    const contactTotals = rawData.map(d => {
+        let total = 0;
+        months.forEach(m => total += (+d[m] || 0));
+        return { name: d.name, total, data: d };
+    });
+    contactTotals.sort((a, b) => b.total - a.total);
+    const topContacts = contactTotals.slice(0, topN);
 
-    // Parse data
-    const series = data.map((d, i) => ({
-        name: d.name,
+    // Build series data for top contacts
+    const series = topContacts.map(c => ({
+        name: c.name,
         values: months.map(m => ({
             date: parseMonth(m),
-            value: +d[m]
+            value: +c.data[m] || 0
         }))
     }));
 
@@ -69,41 +122,46 @@ d3.csv(csvPath).then(data => {
         .enter()
         .append("path")
         .attr("class", "line")
+        .attr("fill", "none")
+        .attr("stroke-width", 2)
         .attr("d", d => line(d.values))
-        .attr("stroke", (d, i) => colors[i % colors.length])
+        .attr("stroke", d => colorMap.get(d.name))
+        .attr("opacity", d => hiddenContacts.has(d.name) ? 0 : 0.8)
         .attr("data-name", d => d.name);
 
     // Legend
     const legend = d3.select("#legend");
-    contacts.forEach((name, i) => {
+    topContacts.forEach((c, i) => {
         const item = legend.append("div")
-            .attr("class", "legend-item")
-            .attr("data-name", name)
-            .on("click", () => toggleLine(name));
+            .attr("class", "legend-item" + (hiddenContacts.has(c.name) ? " hidden" : ""))
+            .style("display", "inline-flex")
+            .style("align-items", "center")
+            .style("gap", "6px")
+            .style("cursor", "pointer")
+            .style("padding", "4px 8px")
+            .style("margin", "0 8px 8px 0")
+            .style("border-radius", "4px")
+            .style("opacity", hiddenContacts.has(c.name) ? 0.3 : 1)
+            .on("click", () => {
+                if (hiddenContacts.has(c.name)) {
+                    hiddenContacts.delete(c.name);
+                } else {
+                    hiddenContacts.add(c.name);
+                }
+                render();
+            });
 
         item.append("div")
-            .attr("class", "legend-color")
-            .style("background", colors[i % colors.length]);
+            .style("width", "20px")
+            .style("height", "3px")
+            .style("border-radius", "2px")
+            .style("background", colorMap.get(c.name));
 
-        item.append("span").text(name);
+        item.append("span")
+            .style("color", "#ddd")
+            .style("font-size", "13px")
+            .text(c.name);
     });
-
-    function toggleLine(name) {
-        if (hiddenContacts.has(name)) {
-            hiddenContacts.delete(name);
-        } else {
-            hiddenContacts.add(name);
-        }
-        updateChart();
-    }
-
-    function updateChart() {
-        paths.style("opacity", d => hiddenContacts.has(d.name) ? 0 : 1);
-        legend.selectAll(".legend-item")
-            .classed("hidden", function() {
-                return hiddenContacts.has(this.getAttribute("data-name"));
-            });
-    }
 
     // Hover interaction
     const focus = svg.append("g").style("display", "none");
@@ -151,10 +209,4 @@ d3.csv(csvPath).then(data => {
                 .style("left", (event.pageX + 15) + "px")
                 .style("top", (event.pageY - 10) + "px");
         });
-}).catch(err => {
-    console.error("Failed to load CSV:", err);
-    document.getElementById("chart").innerHTML =
-        `<p style="color: #f87171; text-align: center; padding: 40px;">
-            Failed to load data. Run <code>python3 query_messages_monthly.py</code> first.
-        </p>`;
-});
+}
