@@ -8,3 +8,7 @@ people_wrapped_data/
 people_wrapped_samples/
 sample_messages.py
 summarize_contacts.py
+
+# Data files (contain personal message data)
+*.csv
+*.json
