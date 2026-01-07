@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 *.pyo
-*.html
+
+# Generated wrapped output files (but not chart/*.html templates)
+/*_wrapped*.html
+/wrapped_*.html
 
 # People Wrapped - personal data (generated at runtime)
 people_wrapped_data/

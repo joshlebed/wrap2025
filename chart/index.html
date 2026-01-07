@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iMessage Monthly Stats</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>iMessage Monthly DM Stats</h1>
+    <nav class="tab-nav">
+        <a href="index.html" class="active">Line</a>
+        <a href="race.html">Race</a>
+        <a href="bump.html">Bump</a>
+        <a href="stream.html">Stream</a>
+        <a href="heatmap.html">Heatmap</a>
+        <a href="scatter.html">Scatter</a>
+        <a href="response.html">Response</a>
+        <a href="dayhour.html">Day/Hour</a>
+    </nav>
+    <div id="controls">
+        <label>From:
+            <select id="start-date"></select>
+        </label>
+        <label>To:
+            <select id="end-date"></select>
+        </label>
+        <label>Show top:
+            <select id="top-n">
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="25" selected>25</option>
+                <option value="40">40</option>
+            </select>
+        </label>
+    </div>
+    <div id="legend"></div>
+    <div id="chart"></div>
+    <p class="instructions">Click legend items to toggle. Hover over chart for details.</p>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script src="chart.js"></script>
+</body>
+</html>

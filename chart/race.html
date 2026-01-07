@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iMessage Bar Chart Race</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .bar-label {
+            fill: #fff;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .bar-value {
+            fill: #aaa;
+            font-size: 12px;
+        }
+        #controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        button {
+            background: #4ade80;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #22c55e;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        #month-display {
+            font-size: 28px;
+            font-weight: 700;
+            color: #4ade80;
+            min-width: 140px;
+            text-align: center;
+        }
+        #speed-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #888;
+        }
+        #speed-control input {
+            width: 100px;
+        }
+        #scrubber-container {
+            max-width: 1200px;
+            margin: 0 auto 20px;
+            padding: 0 60px;
+        }
+        #scrubber {
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            background: #16213e;
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+        }
+        #scrubber::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4ade80;
+            border-radius: 50%;
+            cursor: grab;
+        }
+        #scrubber::-webkit-slider-thumb:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body>
+    <h1>iMessage Bar Chart Race</h1>
+    <nav class="tab-nav">
+        <a href="index.html">Line</a>
+        <a href="race.html" class="active">Race</a>
+        <a href="bump.html">Bump</a>
+        <a href="stream.html">Stream</a>
+        <a href="heatmap.html">Heatmap</a>
+        <a href="scatter.html">Scatter</a>
+        <a href="response.html">Response</a>
+        <a href="dayhour.html">Day/Hour</a>
+    </nav>
+    <div id="controls">
+        <label>From:
+            <select id="start-date"></select>
+        </label>
+        <label>To:
+            <select id="end-date"></select>
+        </label>
+        <button id="play-btn">Play</button>
+        <div id="month-display">-</div>
+        <div id="speed-control">
+            <label>Speed:</label>
+            <input type="range" id="speed" min="50" max="500" value="200">
+        </div>
+    </div>
+    <div id="scrubber-container">
+        <input type="range" id="scrubber" min="0" max="100" value="0">
+    </div>
+    <div id="chart"></div>
+
+    <script src="race.js"></script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sent vs Received</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .dot {
+            stroke: #fff;
+            stroke-width: 1;
+            cursor: pointer;
+            transition: r 0.15s;
+        }
+        .dot:hover {
+            stroke-width: 2;
+        }
+        .dot.selected {
+            stroke: #4ade80;
+            stroke-width: 3;
+        }
+        .balance-line {
+            stroke: #666;
+            stroke-dasharray: 5,5;
+        }
+        #controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #controls label { color: #888; }
+        #controls select {
+            background: #16213e;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 6px 12px;
+            border-radius: 4px;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: #fff;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            opacity: 0;
+        }
+        #person-detail {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #16213e;
+            border-radius: 12px;
+            display: none;
+        }
+        #person-detail h2 {
+            color: #4ade80;
+            margin-bottom: 15px;
+        }
+        #person-detail-chart {
+            width: 100%;
+            height: 300px;
+        }
+        .close-btn {
+            float: right;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .close-btn:hover { color: #fff; }
+    </style>
+</head>
+<body>
+    <h1>Sent vs Received</h1>
+    <nav class="tab-nav">
+        <a href="index.html">Line</a>
+        <a href="race.html">Race</a>
+        <a href="bump.html">Bump</a>
+        <a href="stream.html">Stream</a>
+        <a href="heatmap.html">Heatmap</a>
+        <a href="scatter.html" class="active">Scatter</a>
+        <a href="response.html">Response</a>
+        <a href="dayhour.html">Day/Hour</a>
+    </nav>
+    <div id="controls">
+        <label>From:
+            <select id="start-date"></select>
+        </label>
+        <label>To:
+            <select id="end-date"></select>
+        </label>
+        <label>Size by:
+            <select id="size-mode">
+                <option value="total" selected>Total messages</option>
+                <option value="fixed">Fixed size</option>
+            </select>
+        </label>
+    </div>
+    <div id="chart"></div>
+    <div class="tooltip" id="tooltip"></div>
+    <p class="instructions">Click on a contact to see their sent/received ratio over time. Diagonal line = balanced.</p>
+
+    <div id="person-detail">
+        <button class="close-btn" onclick="closeDetail()">&times;</button>
+        <h2 id="person-name"></h2>
+        <div id="person-detail-chart"></div>
+    </div>
+
+    <script src="scatter.js"></script>
+</body>
+</html>
