@@ -1,225 +1,168 @@
 # Wrapped 2025
 
-Your texting habits, exposed. A Spotify Wrapped-style visualization of your iMessage and WhatsApp history.
+Your texting habits, visualized. Interactive charts and Spotify Wrapped-style reports for your iMessage and WhatsApp history.
 
-**[-> wrap2025.com](https://wrap2025.com)**
+**100% Local** - Your data never leaves your computer.
 
-## Features
+---
 
-- **Total messages + words** – sent, received, per day
-- **Inner circle** – top person + top 10 contacts (expandable)
-- **Group chats** – overview + expandable top 10 groups on one slide
-- **Personality** – diagnosis with starter %, reply time, sent/recv ratio, peak day/hour
-- **Who texts first** – conversation initiator %
-- **Response time** – how fast you reply
-- **3AM bestie** – late night conversations (midnight–5am)
-- **Busiest day** – your wildest day with top 10 people from that day (expandable)
-- **Grind + marathon** – longest streak of daily texting and biggest single-day 1:1 marathon
-- **Vibe check** – who’s heating up (H2 > H1) vs ghosted (dropped after June)
-- **Biggest fan / Down bad** – who texts you most vs who you text most
-- **Peak hours** – most active day/hour
-- **Contribution graph** – GitHub-style activity heatmap
-- **Top emojis** – your most-used emoji lineup
+## Interactive Dashboard (New!)
 
-## Installation
+Beautiful D3.js visualizations of your messaging patterns over time.
+
+![Dashboard Preview](https://wrap2025.com/dashboard-preview.png)
+
+### One-Command Setup
+
+Open **Terminal** (find it in Applications → Utilities) and paste this:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/setup.sh | bash
+```
+
+That's it! The script will:
+
+1. **Check for Python** - installs via Xcode Command Line Tools if needed
+2. **Check permissions** - guides you through enabling Full Disk Access
+3. **Download everything** - all dashboard files to `~/imessage-dashboard`
+4. **Analyze your messages** - extracts stats from your iMessage database
+5. **Launch the dashboard** - opens in your browser automatically
+
+### What You Get
+
+| Chart | Description |
+|-------|-------------|
+| **Line** | Monthly message trends per contact |
+| **Race** | Animated bar chart race of top contacts over time |
+| **Bump** | Ranking changes - see who rose and fell |
+| **Stream** | Stacked area chart of messaging volume |
+| **Heatmap** | GitHub-style activity calendar |
+| **Scatter** | Sent vs received message patterns |
+| **Response** | How fast you reply vs how fast they reply |
+| **Day/Hour** | When do you message most? 7×24 heatmap |
+
+### Running Again Later
+
+After initial setup, restart the dashboard anytime:
+
+```bash
+cd ~/imessage-dashboard && python3 chart/serve.py
+```
+
+To refresh your data (pull latest messages):
+
+```bash
+cd ~/imessage-dashboard && ./run.sh --refresh
+```
+
+---
+
+## Troubleshooting
+
+### "Permission denied" or empty data
+
+You need Full Disk Access enabled for Terminal:
+
+1. Open **System Settings** (or System Preferences on older macOS)
+2. Go to **Privacy & Security** → **Full Disk Access**
+3. Click the **+** button
+4. Navigate to **Applications** → **Utilities** → **Terminal**
+5. Restart Terminal completely (Cmd+Q, then reopen)
+
+### "Python not found"
+
+The setup script should handle this automatically. If it doesn't:
+
+1. Open Terminal
+2. Run: `xcode-select --install`
+3. Click "Install" in the popup
+4. Wait for installation to complete
+5. Run the setup script again
+
+### Charts show no data
+
+Make sure you have iMessage history on this Mac. The dashboard analyzes your local Messages database - it can't access messages stored only on your iPhone.
+
+---
+
+## Wrapped Reports
+
+In addition to the interactive dashboard, generate Spotify Wrapped-style reports:
 
 ### iMessage Wrapped
 
-#### 1. Download the script
-
 ```bash
 curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/imessage_wrapped.py
-```
-
-#### 2. Grant Terminal access
-
-The script needs to read your Messages database:
-
-**System Settings -> Privacy & Security -> Full Disk Access -> Add Terminal**
-
-(Or iTerm/Warp if you use those)
-
-#### 3. Run it
-
-```bash
 python3 imessage_wrapped.py
 ```
 
----
-
 ### WhatsApp Wrapped
-
-#### 1. Download the script
 
 ```bash
 curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/whatsapp_wrapped.py
-```
-
-#### 2. Grant Terminal access
-
-The script needs to read your WhatsApp database:
-
-**System Settings -> Privacy & Security -> Full Disk Access -> Add Terminal**
-
-(Or iTerm/Warp if you use those)
-
-#### 3. Run it
-
-```bash
 python3 whatsapp_wrapped.py
 ```
 
----
-
-### Combined Wrapped (iMessage + WhatsApp)
-
-Merges stats from both platforms into a single unified report.
-
-#### 1. Download the script
+### Combined (iMessage + WhatsApp)
 
 ```bash
 curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/combined_wrapped.py
-```
-
-#### 2. Grant Terminal access
-
-The script needs to read both message databases:
-
-**System Settings -> Privacy & Security -> Full Disk Access -> Add Terminal**
-
-(Or iTerm/Warp if you use those)
-
-#### 3. Run it
-
-```bash
 python3 combined_wrapped.py
 ```
 
-The combined script will:
-- Analyze both iMessage and WhatsApp data
-- Use your AddressBook to reconcile contacts across platforms
-- Merge top contacts, group chats, and all other stats
-- Show a platform breakdown slide
-- Work even if you only have one platform installed
+### Options
+
+```bash
+python3 imessage_wrapped.py --use-2024    # Analyze 2024 instead
+python3 imessage_wrapped.py -o custom.html # Custom output filename
+```
+
+### Wrapped Features
+
+- **Total messages + words** - sent, received, per day
+- **Inner circle** - top person + top 10 contacts
+- **Group chats** - overview + expandable top 10
+- **Personality diagnosis** - starter %, reply time, peak hours
+- **Who texts first** - conversation initiator %
+- **Response time** - how fast you reply
+- **3AM bestie** - late night conversations
+- **Busiest day** - wildest day with top contacts
+- **Grind + marathon** - longest streak, biggest single-day convo
+- **Vibe check** - heating up vs ghosted contacts
+- **GitHub-style heatmap** - activity contribution graph
+- **Top emojis** - your most-used lineup
 
 ---
 
-Your wrapped will open in your browser automatically.
+## Privacy & Security
 
-## Options
+**Your data stays on your computer.** These scripts:
 
-```bash
-# Use 2024 data instead of 2025
-python3 imessage_wrapped.py --use-2024
-python3 whatsapp_wrapped.py --use-2024
-python3 combined_wrapped.py --use-2024
+- Make **zero network requests**
+- Have **no external dependencies** (Python stdlib only)
+- Read only local macOS databases
+- Output self-contained HTML files
+- Are fully open source - read every line yourself
 
-# Custom output filename
-python3 imessage_wrapped.py -o my_wrapped.html
-python3 whatsapp_wrapped.py -o my_wrapped.html
-python3 combined_wrapped.py -o my_wrapped.html
-```
+---
 
-If you don't have enough 2025 messages yet, the script will automatically fall back to 2024.
+## How It Works
 
-## Privacy
+The scripts read your local macOS databases using SQLite:
 
-**100% Local** - Your data never leaves your computer
+- **iMessage**: `~/Library/Messages/chat.db`
+- **WhatsApp**: `~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite`
+- **Contacts**: `~/Library/Application Support/AddressBook/*.abcddb`
 
-- No servers, no uploads, no tracking
-- No external dependencies (Python stdlib only)
-- All analysis happens locally
-- Output is a single HTML file
+Phone numbers and emails are resolved to contact names using your AddressBook.
 
-You can read the entire source code yourself.
+---
 
 ## Requirements
 
 - macOS (uses local message databases)
-- Python 3 (pre-installed on macOS)
 - Full Disk Access for Terminal
-- For WhatsApp: WhatsApp desktop app installed with chat history
-
-## How it works
-
-### iMessage
-The script reads your local `chat.db` (iMessage database) and `AddressBook` (Contacts) using SQLite queries.
-
-### WhatsApp
-The script reads your local `ChatStorage.sqlite` (WhatsApp database) using SQLite queries. WhatsApp stores contact names directly in the database.
-
-### Combined
-The combined script reads both databases and merges the data:
-- Uses AddressBook contacts to reconcile names across platforms
-- Combines message counts, response times, and other stats
-- Merges top contacts (deduplicating by name when possible)
-- Shows platform breakdown with message counts per platform
-- Works even if only one platform is available
-
-All scripts analyze your message patterns, resolve identifiers to contact names, and generate a self-contained HTML file with an interactive gallery.
-
-## FAQ
-
-**Q: Is this safe?**
-A: Yes. The scripts only read local databases, write one HTML file, and make zero network requests. No data is sent anywhere.
-
-**Q: Why do I need Full Disk Access?**
-A: Apple protects message databases. Terminal needs permission to read them.
-
-**Q: Can I run this on iOS?**
-A: No, iOS doesn't allow access to message databases. macOS only.
-
-**Q: The names are showing as phone numbers**
-A: The script tries to match identifiers to contact names. Some may not resolve if the formatting differs.
-
-**Q: Where is the WhatsApp database?**
-A: WhatsApp stores its database at:
-- `~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite` (current version)
-- `~/Library/Containers/com.whatsapp/Data/Library/Application Support/WhatsApp/ChatStorage.sqlite` (older versions)
-
----
-
-## People Wrapped (AI-Powered)
-
-Get AI-generated summaries of your top 25 messaging relationships. Uses Claude Code to analyze your full message history and write personalized insights for each contact.
-
-### Quick Start
-
-1. Download the script:
-```bash
-curl -O https://raw.githubusercontent.com/kothari-nikunj/wrap2025/main/people_wrapped.py
-```
-
-2. Start Claude Code with permissions disabled (needed for file writes):
-```bash
-claude --dangerously-skip-permissions
-```
-
-3. In Claude Code, say:
-```
-Run python3 people_wrapped.py
-```
-
-4. Wait ~10 minutes for extraction + AI summaries
-
-5. Open `people_wrapped_2025.html` in your browser
-
-### How It Works
-
-The "trick" is that Claude Code itself generates the summaries - no API key needed:
-
-1. Script extracts your top 25 contacts from iMessage/WhatsApp
-2. Script prints instructions for Claude Code
-3. Claude Code reads the message files and writes personalized summaries
-4. Script builds a swipeable HTML report
-
-### What You Get
-
-- Personalized 3-4 paragraph summaries for each contact
-- Direct quotes from your conversations
-- Themes, inside jokes, memorable moments
-- How the relationship evolved through the year
-- Tone matched to relationship type (family, partner, friend, colleague)
+- For WhatsApp: WhatsApp desktop app with synced history
 
 ---
 
