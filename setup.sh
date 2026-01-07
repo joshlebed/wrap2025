@@ -107,31 +107,34 @@ cd "$INSTALL_DIR"
 
 BASE_URL="https://raw.githubusercontent.com/joshlebed/wrap2025/main"
 
+# Cache buster to bypass GitHub's CDN cache
+CB="?$(date +%s)"
+
 # Download Python scripts
 echo "  Downloading data scripts..."
-curl -fsSL "$BASE_URL/query_messages_monthly.py" -o query_messages_monthly.py
-curl -fsSL "$BASE_URL/query_messages_detailed.py" -o query_messages_detailed.py
+curl -fsSL "$BASE_URL/query_messages_monthly.py$CB" -o query_messages_monthly.py
+curl -fsSL "$BASE_URL/query_messages_detailed.py$CB" -o query_messages_detailed.py
 
 # Download chart files
 echo "  Downloading chart files..."
-curl -fsSL "$BASE_URL/chart/serve.py" -o chart/serve.py
-curl -fsSL "$BASE_URL/chart/index.html" -o chart/index.html
-curl -fsSL "$BASE_URL/chart/chart.js" -o chart/chart.js
-curl -fsSL "$BASE_URL/chart/race.html" -o chart/race.html
-curl -fsSL "$BASE_URL/chart/race.js" -o chart/race.js
-curl -fsSL "$BASE_URL/chart/bump.html" -o chart/bump.html
-curl -fsSL "$BASE_URL/chart/bump.js" -o chart/bump.js
-curl -fsSL "$BASE_URL/chart/stream.html" -o chart/stream.html
-curl -fsSL "$BASE_URL/chart/stream.js" -o chart/stream.js
-curl -fsSL "$BASE_URL/chart/heatmap.html" -o chart/heatmap.html
-curl -fsSL "$BASE_URL/chart/heatmap.js" -o chart/heatmap.js
-curl -fsSL "$BASE_URL/chart/scatter.html" -o chart/scatter.html
-curl -fsSL "$BASE_URL/chart/scatter.js" -o chart/scatter.js
-curl -fsSL "$BASE_URL/chart/response.html" -o chart/response.html
-curl -fsSL "$BASE_URL/chart/response.js" -o chart/response.js
-curl -fsSL "$BASE_URL/chart/dayhour.html" -o chart/dayhour.html
-curl -fsSL "$BASE_URL/chart/dayhour.js" -o chart/dayhour.js
-curl -fsSL "$BASE_URL/chart/style.css" -o chart/style.css
+curl -fsSL "$BASE_URL/chart/serve.py$CB" -o chart/serve.py
+curl -fsSL "$BASE_URL/chart/index.html$CB" -o chart/index.html
+curl -fsSL "$BASE_URL/chart/chart.js$CB" -o chart/chart.js
+curl -fsSL "$BASE_URL/chart/race.html$CB" -o chart/race.html
+curl -fsSL "$BASE_URL/chart/race.js$CB" -o chart/race.js
+curl -fsSL "$BASE_URL/chart/bump.html$CB" -o chart/bump.html
+curl -fsSL "$BASE_URL/chart/bump.js$CB" -o chart/bump.js
+curl -fsSL "$BASE_URL/chart/stream.html$CB" -o chart/stream.html
+curl -fsSL "$BASE_URL/chart/stream.js$CB" -o chart/stream.js
+curl -fsSL "$BASE_URL/chart/heatmap.html$CB" -o chart/heatmap.html
+curl -fsSL "$BASE_URL/chart/heatmap.js$CB" -o chart/heatmap.js
+curl -fsSL "$BASE_URL/chart/scatter.html$CB" -o chart/scatter.html
+curl -fsSL "$BASE_URL/chart/scatter.js$CB" -o chart/scatter.js
+curl -fsSL "$BASE_URL/chart/response.html$CB" -o chart/response.html
+curl -fsSL "$BASE_URL/chart/response.js$CB" -o chart/response.js
+curl -fsSL "$BASE_URL/chart/dayhour.html$CB" -o chart/dayhour.html
+curl -fsSL "$BASE_URL/chart/dayhour.js$CB" -o chart/dayhour.js
+curl -fsSL "$BASE_URL/chart/style.css$CB" -o chart/style.css
 
 echo -e "${GREEN}✓ Files downloaded to $INSTALL_DIR${NC}"
 echo ""
