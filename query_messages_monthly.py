@@ -115,8 +115,8 @@ def main():
     contacts = load_contacts()
     print(f"  {len(contacts)} contact mappings loaded\n")
 
-    # Generate month columns from Jan 2018 to Feb 2026
-    months = generate_months(2018, 1, 2026, 2)
+    # Generate month columns from Jan 2019 to Feb 2026
+    months = generate_months(2019, 1, 2026, 2)
     month_labels = [f"{y}-{m:02d}" for y, m in months]
 
     print("Querying iMessage database...")
@@ -178,10 +178,10 @@ def main():
         for i, count in enumerate(monthly_counts):
             by_name[name]["months"][i] += count
 
-    # Sort by total_dm descending and take top 25
-    results = sorted(by_name.values(), key=lambda x: x["total_dm"], reverse=True)[:25]
+    # Sort by total_dm descending and take top 50
+    results = sorted(by_name.values(), key=lambda x: x["total_dm"], reverse=True)[:50]
 
-    # Write to CSV
+    # Write monthly CSV
     csv_path = "message_stats_monthly.csv"
     fieldnames = ["name", "total_dm"] + month_labels
     with open(csv_path, "w", newline="") as f:
@@ -192,6 +192,52 @@ def main():
             writer.writerow(row)
     print(f"Results written to {csv_path}")
     print(f"  {len(results)} contacts, {len(month_labels)} month columns")
+
+    # Generate quarterly data
+    quarters = []
+    quarter_labels = []
+    for y in range(2019, 2027):
+        for q in range(1, 5):
+            quarters.append((y, q))
+            quarter_labels.append(f"{y}-Q{q}")
+    # Filter to valid range (Q1 2019 to Q1 2026)
+    quarters = [(y, q) for y, q in quarters if (y, q) <= (2026, 1)]
+    quarter_labels = [f"{y}-Q{q}" for y, q in quarters]
+
+    # Map months to quarters
+    def month_to_quarter_idx(month_label):
+        y, m = int(month_label[:4]), int(month_label[5:7])
+        q = (m - 1) // 3 + 1
+        try:
+            return quarters.index((y, q))
+        except ValueError:
+            return None
+
+    # Aggregate monthly data to quarterly
+    quarterly_results = []
+    for r in results:
+        q_totals = [0] * len(quarters)
+        for i, month_val in enumerate(r["months"]):
+            q_idx = month_to_quarter_idx(month_labels[i])
+            if q_idx is not None:
+                q_totals[q_idx] += month_val
+        quarterly_results.append({
+            "name": r["name"],
+            "total_dm": r["total_dm"],
+            "quarters": q_totals
+        })
+
+    # Write quarterly CSV
+    csv_path_q = "message_stats_quarterly.csv"
+    fieldnames_q = ["name", "total_dm"] + quarter_labels
+    with open(csv_path_q, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(fieldnames_q)
+        for r in quarterly_results:
+            row = [r["name"], r["total_dm"]] + r["quarters"]
+            writer.writerow(row)
+    print(f"Results written to {csv_path_q}")
+    print(f"  {len(quarterly_results)} contacts, {len(quarter_labels)} quarter columns")
 
 
 if __name__ == "__main__":
